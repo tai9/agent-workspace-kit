@@ -22,3 +22,44 @@ commit_file() { # <repo> <path> <message>
   git -C "$1" add -A; git -C "$1" commit -qm "$3"; git -C "$1" rev-parse HEAD
 }
 strip_ansi() { sed 's/\x1b\[[0-9;]*m//g'; }
+
+# Multi-repo workspace: <dir>/workspace.yml, <dir>/my-app (git, pubspec), <dir>/my-be (git).
+make_multi() {
+  mkdir -p "$1"; git_init "$1/my-app"; git_init "$1/my-be"
+  printf 'name: demo\nversion: 1.9.1+76\n' > "$1/my-app/pubspec.yaml"
+  git -C "$1/my-app" add -A; git -C "$1/my-app" commit -qm "pubspec"
+  git -C "$1/my-app" branch develop
+  cat > "$1/workspace.yml" <<'EOF'
+name: Demo
+shape: multi-repo
+repos:
+  app: { path: my-app, trunk: develop, role: release-anchor, mirror: main }
+  backend: { path: my-be, trunk: main, role: service }
+release:
+  adapter: flutter-shorebird
+  anchor_file: my-app/pubspec.yaml
+  tag: "released/{version}"
+  store_paths: [android/, ios/, pubspec, .gradle, Podfile, Info.plist, AndroidManifest, assets/]
+  contract_paths: [lib/core/services/api_service]
+EOF
+}
+# Monorepo workspace: <dir> is one git repo with app/ and backend/.
+make_mono() {
+  git_init "$1"; mkdir -p "$1/app" "$1/backend"
+  printf 'name: demo\nversion: 1.0.0+6\n' > "$1/app/pubspec.yaml"
+  cat > "$1/workspace.yml" <<'EOF'
+name: Demo
+shape: monorepo
+trunk: main
+repos:
+  app: { path: app, role: release-anchor, mirror: release }
+  backend: { path: backend, role: service }
+release:
+  adapter: flutter-shorebird
+  anchor_file: app/pubspec.yaml
+  tag: "released/{version}"
+  store_paths: [android/, ios/, pubspec, .gradle, Podfile, Info.plist, AndroidManifest, assets/]
+  contract_paths: [lib/services/scorer]
+EOF
+  git -C "$1" add -A; git -C "$1" commit -qm "workspace"
+}
