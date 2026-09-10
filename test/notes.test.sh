@@ -165,4 +165,49 @@ scratch_tmpdir="$TMP/tmpdir-scratch"; mkdir -p "$scratch_tmpdir"
 leftover="$(ls -A "$scratch_tmpdir" | wc -l | tr -d ' ')"
 is "no leaked temp files" "0" "$leftover"
 
+echo "NAME substitution survives awk-gsub-special characters"
+# render_with_name <fixture-dir> <name yaml scalar, already quoted as needed>
+# Builds a minimal one-repo fixture whose workspace name is the given literal,
+# renders TEMPLATE_BASE, and prints the rendered H1 line.
+render_with_name() {
+  local dir="$1" name_yaml="$2"
+  mkdir -p "$dir/app"; git_init "$dir/app"
+  printf 'name: demo\nversion: 1.0.0+1\n' > "$dir/app/pubspec.yaml"
+  git -C "$dir/app" add -A; git -C "$dir/app" commit -qm pubspec
+  cat > "$dir/workspace.yml" <<EOF
+name: $name_yaml
+shape: monorepo
+trunk: main
+repos:
+  app: { path: app, role: release-anchor, mirror: release }
+release:
+  adapter: flutter-shorebird
+  anchor_file: app/pubspec.yaml
+  tag: "released/{version}"
+  store_paths: [android/, ios/, pubspec, .gradle, Podfile, Info.plist, AndroidManifest, assets/]
+  contract_paths: [lib/services/scorer]
+EOF
+  git -C "$dir" init -q -b main 2>/dev/null || true
+  git -C "$dir" add -A 2>/dev/null; git -C "$dir" commit -qm workspace >/dev/null 2>&1 || true
+  (
+    WORKSPACE_ROOT="$dir"
+    source "$KIT/lib/config.sh"; source "$KIT/lib/repos.sh"; source "$KIT/lib/inventory.sh"; source "$KIT/lib/notes.sh"
+    mkdir -p "$RELEASES_DIR"; cp "$KIT"/templates/releases/_TEMPLATE.*.md "$RELEASES_DIR/"
+    write_note_from_template "$TEMPLATE_BASE" "$dir/out.md" "1.0.0+1" "" ""
+    grep -m1 "^# " "$dir/out.md"
+  )
+}
+
+heading="$(render_with_name "$TMP/name-plain" 'Demo')"
+is "ordinary name renders unchanged" "# Demo 1.0.0+1 — store release" "$heading"
+
+heading="$(render_with_name "$TMP/name-amp" "'A & B'")"
+is "name containing an ampersand renders literally" "# A & B 1.0.0+1 — store release" "$heading"
+
+heading="$(render_with_name "$TMP/name-bs" "'A \\ B'")"
+is "name containing a backslash renders literally" "# A \\ B 1.0.0+1 — store release" "$heading"
+
+heading="$(render_with_name "$TMP/name-both" "'A & B \\ C'")"
+is "name containing both an ampersand and a backslash renders literally" "# A & B \\ C 1.0.0+1 — store release" "$heading"
+
 finish

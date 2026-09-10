@@ -156,6 +156,10 @@ write_note_from_template_by_commits() {
   dt="$(today)"
   status="patched $dt (OTA)"
   name="$(cfg_default name Workspace)"
+  # awk's -v assignment itself decodes C-style escapes in the value (so a lone
+  # "\" in a free-form name would otherwise vanish before the awk program ever
+  # sees it) — double every backslash here so -v's decoding round-trips it.
+  name="${name//\\/\\\\}"
   cl_file="$(mktemp)"; dep_file="$(mktemp)"
   render_changelog_rows_by_commit "$base" "$@" > "$cl_file"
   [[ -s "$cl_file" ]] || printf '| — | — | — | (no itemized changes) |\n' > "$cl_file"
@@ -168,7 +172,19 @@ write_note_from_template_by_commits() {
       gsub(/\{\{DATE\}\}/, dt, line)
       gsub(/\{\{STATUS\}\}/, status, line)
       gsub(/\{\{PATCH_INDEX\}\}/, pidx, line)
-      gsub(/\{\{NAME\}\}/, name, line)
+      # NAME is handled by literal concatenation, not gsub(re, name, line): unlike
+      # VERSION/DATE/STATUS/PATCH_INDEX (constrained formats that cannot contain
+      # "&" or "\\"), the workspace name is free-form config a user types, and
+      # gsub treats "&" in its replacement argument as "insert the match" — a
+      # name like "A & B" would silently corrupt the heading.
+      if (index(line, "{{NAME}}") > 0) {
+        out = ""; rest = line
+        while ((i = index(rest, "{{NAME}}")) > 0) {
+          out = out substr(rest, 1, i - 1) name
+          rest = substr(rest, i + 8)
+        }
+        line = out rest
+      }
       if (line ~ /^[[:space:]]*\{\{CHANGELOG_ROWS\}\}[[:space:]]*$/) { while ((getline l < clf)  > 0) print l; close(clf);  next }
       if (line ~ /^[[:space:]]*\{\{DEPENDENCIES\}\}[[:space:]]*$/)   { while ((getline l < depf) > 0) print l; close(depf); next }
       print line
@@ -186,6 +202,10 @@ write_note_from_template() {
   dt="$(today)"
   if [[ -n "$pidx" ]]; then status="patched $dt (OTA)"; else status="released $dt"; fi
   name="$(cfg_default name Workspace)"
+  # awk's -v assignment itself decodes C-style escapes in the value (so a lone
+  # "\" in a free-form name would otherwise vanish before the awk program ever
+  # sees it) — double every backslash here so -v's decoding round-trips it.
+  name="${name//\\/\\\\}"
   # Multi-line blocks go through temp files — awk -v cannot carry newlines.
   cl_file="$(mktemp)"; dep_file="$(mktemp)"
   render_changelog_rows "$items" > "$cl_file"
@@ -199,7 +219,19 @@ write_note_from_template() {
       gsub(/\{\{DATE\}\}/, dt, line)
       gsub(/\{\{STATUS\}\}/, status, line)
       gsub(/\{\{PATCH_INDEX\}\}/, pidx, line)
-      gsub(/\{\{NAME\}\}/, name, line)
+      # NAME is handled by literal concatenation, not gsub(re, name, line): unlike
+      # VERSION/DATE/STATUS/PATCH_INDEX (constrained formats that cannot contain
+      # "&" or "\\"), the workspace name is free-form config a user types, and
+      # gsub treats "&" in its replacement argument as "insert the match" — a
+      # name like "A & B" would silently corrupt the heading.
+      if (index(line, "{{NAME}}") > 0) {
+        out = ""; rest = line
+        while ((i = index(rest, "{{NAME}}")) > 0) {
+          out = out substr(rest, 1, i - 1) name
+          rest = substr(rest, i + 8)
+        }
+        line = out rest
+      }
       if (line ~ /^[[:space:]]*\{\{CHANGELOG_ROWS\}\}[[:space:]]*$/) { while ((getline l < clf)  > 0) print l; close(clf);  next }
       if (line ~ /^[[:space:]]*\{\{DEPENDENCIES\}\}[[:space:]]*$/)   { while ((getline l < depf) > 0) print l; close(depf); next }
       print line
