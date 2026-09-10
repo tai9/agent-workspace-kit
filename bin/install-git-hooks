@@ -53,6 +53,8 @@ if [[ "$(shape)" == monorepo ]]; then
 else
   for n in $(repo_names); do
     install_into "$(repo_git_dir "$n")" "$(repo_label "$n")" pre-commit
-    [[ "$n" == "$(anchor_name)" ]] && install_into "$(repo_git_dir "$n")" "$(repo_label "$n")" post-merge
+    if [[ "$n" == "$(anchor_name)" ]]; then
+      install_into "$(repo_git_dir "$n")" "$(repo_label "$n")" post-merge
+    fi
   done
 fi
