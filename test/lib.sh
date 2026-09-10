@@ -11,10 +11,16 @@ is()    { [ "$2" = "$3" ] && t_ok "$1" || t_bad "$1" "$2" "$3"; }
 finish() { printf '%d passed, %d failed\n' "$pass" "$fail"; [ "$fail" -eq 0 ]; }
 
 # A git repo with one commit, identity set. Prints nothing; use the path you passed.
+# The root commit's author/committer dates are pinned so two independent
+# git_init calls (e.g. a fixture repo and a throwaway local "origin" for it)
+# produce a byte-identical, same-SHA root commit — letting the fixture push
+# its real history onto the "origin" as a clean fast-forward instead of
+# racing real wall-clock seconds for a coincidental hash collision.
 git_init() { # <dir>
   mkdir -p "$1"; git -C "$1" init -q -b main
   git -C "$1" config user.email t@example.com; git -C "$1" config user.name Test
-  git -C "$1" commit -q --allow-empty -m "root"
+  GIT_AUTHOR_DATE="2020-01-01T00:00:00" GIT_COMMITTER_DATE="2020-01-01T00:00:00" \
+    git -C "$1" commit -q --allow-empty -m "root"
 }
 # Append to a file and commit it. Prints the commit sha.
 commit_file() { # <repo> <path> <message>

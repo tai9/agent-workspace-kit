@@ -93,10 +93,10 @@ if [[ -n "$COUPLED_ROWS" ]]; then
   printf '%s\n' "$COUPLED_ROWS" | sed 's/^/      /' >&2
 fi
 
-# 5) Store-cut reminder for the Supabase version gate.
+# 5) Store-cut reminder for the version-gate follow-up.
 if [[ "$MODE" == "release" ]]; then
   if unreleased_rows | grep -q '🔴 Store'; then
-    warn "  ! Store items present — after release, bump app_versions.min_build in Supabase if old builds must be force-updated."
+    warn "  ! Store items present — after release, run the project's post_release commands (release-live --post) if old builds must be forced to update."
   fi
 fi
 

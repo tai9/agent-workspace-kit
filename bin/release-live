@@ -1,0 +1,289 @@
+#!/usr/bin/env bash
+#
+# release-live — the "the build is actually live" step of a store release:
+# everything that must move once a store has approved and/or rolled out the
+# build. Run it AFTER release-cut, not instead of it.
+#
+#   bin/release-live <version> [options]
+#
+# What it touches (each behind its own opt-in flag; with NO flags it only
+# reports and changes nothing):
+#   1. releases/<version>.md    — Status line -> live, per platform
+#   2. released/<version> tag   — pushed to origin if it isn't yet
+#   3. the anchor's mirror branch — merge the released/<version> TAG (not the
+#                                   trunk HEAD, which holds unshipped work)
+#   4. post_release commands    — project-specific post-release steps, from
+#                                  release config, run in order
+#
+# Options:
+#   --platform ios|android|both  which store the build went live on (default both)
+#   --apply                      do (1) and (2)
+#   --merge-mirror                also do (3)   [implies --apply]
+#   --force-merge                 allow (3) with only one platform live
+#   --post                        also do (4)   [implies --apply]
+#   --post-args "<str>"           substituted for {extra} in post_release commands
+#   --dry-run                     report only (same as no flags; kept for the
+#                                 project-wide "no flags = read-only" rule)
+#
+# Everything is idempotent: a build usually goes live on one store before the
+# other, and this command is expected to run twice. Re-running after only iOS
+# went live, then again for Android, converges on the same end state — a
+# platform already marked live stays live.
+
+set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/release-common.sh"
+
+VERSION=""
+PLATFORM="both"
+DO_APPLY=0
+DO_MERGE=0
+FORCE_MERGE=0
+DO_POST=0
+POST_ARGS=""
+
+usage() { sed -n '2,32p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)      usage 0 ;;
+    --platform)     PLATFORM="${2:-}"; shift 2 ;;
+    --apply)        DO_APPLY=1; shift ;;
+    --merge-mirror) DO_MERGE=1; DO_APPLY=1; shift ;;
+    --force-merge)  FORCE_MERGE=1; shift ;;
+    --post)         DO_POST=1; DO_APPLY=1; shift ;;
+    --post-args)    POST_ARGS="${2:-}"; shift 2 ;;
+    --dry-run)      shift ;;
+    -*)             die "Unknown option: $1" ;;
+    *)              [[ -z "$VERSION" ]] || die "Unexpected argument: $1"; VERSION="$1"; shift ;;
+  esac
+done
+
+case "$PLATFORM" in ios|android|both) ;; *) die "--platform must be ios, android or both" ;; esac
+[[ -n "$VERSION" ]] || die "Usage: release-live <version> [options]"
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]] \
+  || die "Version must look like 1.9.0+75 (got '$VERSION')"
+
+BUILD="${VERSION##*+}"
+NOTE="$RELEASES_DIR/$VERSION.md"
+TAG="$(released_tag_for "$VERSION")"
+TODAY="$(today)"
+MIRROR="$(anchor_mirror)"
+
+# A workspace may legitimately have no mirror branch — fail fast, before any
+# other work, only when the caller actually asked to merge into one.
+[[ "$DO_MERGE" == "0" || -n "$MIRROR" ]] \
+  || die "no mirror branch configured for $(anchor_name)"
+
+# Remote git in the anchor repo must run with the repo's own env loaded (e.g.
+# a token picks the right account on this machine).
+anchor_git_remote() {
+  if command -v direnv >/dev/null 2>&1; then
+    ( cd "$(anchor_git_dir)" && direnv exec . git "$@" )
+  else
+    warn "direnv not found — running git without the repo's .envrc; a wrong account may be used"
+    anchor_git "$@"
+  fi
+}
+
+# Resolve, print and (unless called with a second argument) run each
+# post_release command for <platform>, substituting {version}/{build}/
+# {platform}/{extra}. Called with "list" from the report section (prints
+# only); called with no second argument from the apply section (runs them),
+# dying on the first non-zero exit.
+run_post_release() { # <platform> [list]
+  local n i cmd
+  n="$(cfg post_release.#)"; i=0
+  while [[ $i -lt ${n:-0} ]]; do
+    cmd="$(cfg "post_release.$i")"
+    cmd="${cmd//\{version\}/$VERSION}"
+    cmd="${cmd//\{build\}/$BUILD}"
+    cmd="${cmd//\{platform\}/$1}"
+    cmd="${cmd//\{extra\}/$POST_ARGS}"
+    info "  post_release: $cmd"
+    if [[ "${2:-}" != "list" ]]; then
+      (cd "$WORKSPACE_ROOT" && bash -c "$cmd") || die "post_release step failed: $cmd"
+    fi
+    i=$((i + 1))
+  done
+}
+
+printf '\n=== %s %s — go-live check ===\n\n' "$(cfg_default name Workspace)" "$VERSION"
+
+# --- 1. The release note -----------------------------------------------------
+FAIL=0
+CURRENT_STATUS=""
+if [[ -f "$NOTE" ]]; then
+  ok "✓ release note: ${NOTE#$WORKSPACE_ROOT/}"
+  CURRENT_STATUS="$(grep -m1 -E '^- \*\*Status:\*\*' "$NOTE" || true)"
+  info "  current: ${CURRENT_STATUS:-<no Status line>}"
+  if grep -qE '_TODO:' "$NOTE"; then
+    warn "  ! the note still has TODO placeholders"
+    warn "    store copy is a required release step — fill it before/while marking this live"
+  fi
+else
+  err "✗ release note not found: ${NOTE#$WORKSPACE_ROOT/}"
+  err "  a store build with no release note is an incomplete release"
+  FAIL=1
+fi
+
+# Effective per-platform live state, computed here (not from the raw
+# --platform flag alone) so the merge gate below reflects the true state
+# after this run — a platform already marked live in the note stays live,
+# and a second run for the other platform correctly sees "both now live".
+IOS_LIVE=0; AND_LIVE=0
+[[ "$CURRENT_STATUS" == *"iOS ✅"* ]]     && IOS_LIVE=1
+[[ "$CURRENT_STATUS" == *"Android ✅"* ]] && AND_LIVE=1
+[[ "$PLATFORM" == "ios"     || "$PLATFORM" == "both" ]] && IOS_LIVE=1
+[[ "$PLATFORM" == "android" || "$PLATFORM" == "both" ]] && AND_LIVE=1
+BOTH_LIVE=0; [[ "$IOS_LIVE" == "1" && "$AND_LIVE" == "1" ]] && BOTH_LIVE=1
+
+# --- 2. The tag ----------------------------------------------------------
+TAG_COMMIT=""
+TAG_ON_REMOTE=0
+if anchor_git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+  TAG_COMMIT="$(anchor_git rev-parse "$TAG")"
+  ok "✓ tag $TAG -> $(anchor_git rev-parse --short=12 "$TAG") $(anchor_git log -1 --format=%s "$TAG_COMMIT")"
+  if [[ -n "$(anchor_git_remote ls-remote --tags origin "refs/tags/$TAG" 2>/dev/null)" ]]; then
+    TAG_ON_REMOTE=1
+    info "  already on origin"
+  else
+    warn "  ! not pushed to origin yet"
+  fi
+else
+  err "✗ tag $TAG does not exist"
+  err "  every production release must be tagged — cut it with release-cut, or tag the shipped commit by hand"
+  FAIL=1
+fi
+
+# --- 3. mirror vs the released tag -------------------------------------------
+CUR_BRANCH="$(anchor_git rev-parse --abbrev-ref HEAD)"
+info ""
+info "$(repo_label "$(anchor_name)"): current branch '$CUR_BRANCH'"
+if [[ -n "$(anchor_git status --porcelain)" ]]; then
+  warn "  ! working tree is dirty — a merge into the mirror will be refused until it is clean"
+fi
+
+MERGE_NEEDED=0
+if [[ -z "$MIRROR" ]]; then
+  info "  no mirror branch configured for $(anchor_name) — skipping the mirror check"
+else
+  # origin is the authority for what the mirror holds, but the report must
+  # not mutate anything (no flags = read-only) — it judges origin/$MIRROR
+  # from whatever remote-tracking ref is already cached locally, without
+  # fetching. The apply path's own `pull --ff-only` (below) does the actual
+  # fetch, right before it needs fresh data to merge against.
+  MIRROR_REF="$MIRROR"
+  anchor_git rev-parse -q --verify "origin/$MIRROR" >/dev/null && MIRROR_REF="origin/$MIRROR"
+  if [[ -n "$TAG_COMMIT" ]]; then
+    if anchor_git merge-base --is-ancestor "$TAG_COMMIT" "$MIRROR_REF" 2>/dev/null; then
+      ok "✓ $MIRROR_REF already contains $TAG"
+    else
+      MERGE_NEEDED=1
+      warn "  ! $MIRROR_REF does NOT contain $TAG — it is $(anchor_git rev-list --count "$MIRROR_REF".."$TAG") commit(s) behind the live build"
+    fi
+  fi
+  if [[ "$MIRROR_REF" == "origin/$MIRROR" ]]; then
+    AHEAD="$(anchor_git rev-list --count "origin/$MIRROR..$MIRROR" 2>/dev/null || echo '?')"
+    BEHIND="$(anchor_git rev-list --count "$MIRROR..origin/$MIRROR" 2>/dev/null || echo '?')"
+    [[ "$AHEAD" == "0" ]] || warn "  ! local $MIRROR is $AHEAD commit(s) ahead of origin/$MIRROR (unpushed)"
+    [[ "$BEHIND" == "0" ]] || info "  local $MIRROR is $BEHIND commit(s) behind origin/$MIRROR (the merge step pulls first)"
+  fi
+  TRUNK_AHEAD="$(anchor_git rev-list --count "$TAG..$(anchor_trunk)" 2>/dev/null || echo '?')"
+  info "  $(anchor_trunk) is $TRUNK_AHEAD commit(s) ahead of $TAG — those are unshipped and must NOT reach $MIRROR"
+fi
+
+[[ "$FAIL" == "0" ]] || { info ""; die "Blocking problems above — fix them before marking $VERSION live."; }
+
+# --- Plan --------------------------------------------------------------------
+info ""
+info "=== Plan for '$VERSION' live on: $PLATFORM ==="
+info "  1. release note Status -> live $TODAY (per platform)"
+if [[ "$TAG_ON_REMOTE" == "1" ]]; then
+  info "  2. tag already on origin (nothing to push)"
+else
+  info "  2. push tag $TAG to origin"
+fi
+if [[ -z "$MIRROR" ]]; then
+  info "  3. no mirror branch configured for $(anchor_name) — nothing to merge"
+elif [[ "$MERGE_NEEDED" == "1" ]]; then
+  if [[ "$BOTH_LIVE" == "1" || "$FORCE_MERGE" == "1" ]]; then
+    info "  3. merge $TAG into $MIRROR + push $( [[ $DO_MERGE == 1 ]] || printf '(needs --merge-mirror)' )"
+  else
+    info "  3. merge into $MIRROR SKIPPED — not all platforms live yet; $MIRROR mirrors what BOTH stores serve (--force-merge overrides)"
+  fi
+else
+  info "  3. $MIRROR already up to date"
+fi
+info "  4. post_release commands for $PLATFORM $( [[ $DO_POST == 1 ]] || printf '(needs --post)' ):"
+run_post_release "$PLATFORM" list
+[[ "$(cfg post_release.#)" -gt 0 ]] || info "     (none configured)"
+
+if [[ "$DO_APPLY" == "0" ]]; then
+  info ""
+  ok "Report only — nothing was changed. Re-run with --apply [--post] [--merge-mirror] to execute."
+  exit 0
+fi
+
+# --- Apply: release note status ---------------------------------------------
+info ""
+info "=== Applying ==="
+
+if [[ "$IOS_LIVE" == "1" ]]; then ios_mark='iOS ✅';     else ios_mark='iOS ⏳';     fi
+if [[ "$AND_LIVE" == "1" ]]; then and_mark='Android ✅'; else and_mark='Android ⏳'; fi
+NEW_STATUS="- **Status:** live $TODAY — $ios_mark · $and_mark (build $BUILD)"
+
+if grep -qE '^- \*\*Status:\*\*' "$NOTE"; then
+  tmp="$(mktemp)"
+  awk -v new="$NEW_STATUS" '
+    !done && /^- \*\*Status:\*\*/ { print new; done=1; next } { print }
+  ' "$NOTE" > "$tmp" && mv "$tmp" "$NOTE"
+else
+  warn "! no Status line in the note — appending one"
+  printf '\n%s\n' "$NEW_STATUS" >> "$NOTE"
+fi
+ok "✓ note status: ${NEW_STATUS#- \*\*Status:\*\* }"
+
+# --- Apply: push the tag -----------------------------------------------------
+if [[ "$TAG_ON_REMOTE" == "0" ]]; then
+  anchor_git_remote push origin "refs/tags/$TAG"
+  ok "✓ pushed $TAG"
+fi
+
+# --- Apply: merge the tag into the mirror ------------------------------------
+if [[ "$DO_MERGE" == "1" ]]; then
+  [[ -n "$MIRROR" ]] || die "no mirror branch configured for $(anchor_name)"
+  if [[ "$MERGE_NEEDED" == "1" ]]; then
+    if [[ "$BOTH_LIVE" != "1" && "$FORCE_MERGE" == "0" ]]; then
+      warn "! skipping the $MIRROR merge: not all platforms live yet (pass --force-merge to override)"
+    else
+      [[ -z "$(anchor_git status --porcelain)" ]] || die "working tree is dirty — commit or stash before merging into $MIRROR"
+      # The checked-out branch may have been switched out-of-band by the
+      # caller; always checkout the target explicitly and return to where we
+      # were.
+      anchor_git checkout "$MIRROR"
+      anchor_git_remote pull --ff-only origin "$MIRROR"
+      anchor_git merge --no-ff "$TAG" -m "Merge $TAG into $MIRROR — store release $VERSION is live"
+      anchor_git_remote push origin "$MIRROR"
+      ok "✓ merged $TAG into $MIRROR and pushed"
+      anchor_git checkout "$CUR_BRANCH"
+      info "  back on '$CUR_BRANCH'"
+    fi
+  else
+    info "  $MIRROR already up to date"
+  fi
+fi
+
+# --- Apply: post_release commands --------------------------------------------
+if [[ "$DO_POST" == "1" ]]; then
+  info ""
+  info "=== post_release ($PLATFORM) ==="
+  run_post_release "$PLATFORM"
+  ok "✓ post_release commands done"
+fi
+
+info ""
+ok "Done. Remaining manual checks:"
+info "  · $(repo_label "$(single_service 2>/dev/null || echo backend)"): tag the deployed prod commit $TAG (or $TAG-beN) if this release shipped with a backend change"
+info "  · Store copy: What's new + Promotional Text filled in ${NOTE#$WORKSPACE_ROOT/} and pasted into the store consoles"
+info "  · post_release: re-run with --post if the commands above haven't run yet"
+info "  · Notion / roadmap status, if this release closes tracked items"
