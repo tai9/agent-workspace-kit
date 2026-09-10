@@ -114,6 +114,12 @@ release:
     - lib/core/services/api_service
     - lib/core/services/app_version_service
 
+contracts:                       # optional; cross-repo pairs contract-check reports on
+  - name: referral
+    paths:
+      app: lib/features/learn_together
+      backend: referral
+
 preflight:
   base_url_from: "env:API_BASE_URL@viespeak-app/.env.{env}"
   endpoints:
@@ -231,8 +237,10 @@ No CI on the kit repo, by decision. Instead, in order:
 2. **Every command supports `--dry-run`**, printing what it would write and run.
 3. **Parity with VieSpeak.** The kit runs against this workspace in parallel with
    the existing `scripts/`, on the same inputs, until an `add`, a `status`, a
-   `preflight`, a `doctor` and a patch cut all produce byte-identical output.
-   Only then does VieSpeak switch and delete its copy.
+   `cut --dry-run` and the doctor (Hooks section excepted, since the kit wires
+   hooks differently by design) produce byte-identical output, and `preflight`
+   reaches the same verdict on every check. Only then does VieSpeak switch and
+   delete its copy.
 4. **Clean adoption by Foxy Junior.** Only after step 3, so a failure there is
    the monorepo shape and not the kit. `init` runs on a fresh worktree of
    `tai9/foxy-junior`; the doctor must reach zero failures; a `status` and a
