@@ -221,8 +221,9 @@ doctor_branches() {
 # Loose documents at the root are what an agent reads first and trusts most; a
 # superseded spec living next to CLAUDE.md is how a stale rule gets followed.
 # Skipped entirely in a monorepo: its own docs legitimately live at the root.
+# The skip is the caller's decision (doctor_run), not this section's — shape
+# lives only in doctor_targets and the (declared exception) hooks section.
 doctor_root() {
-  [ "$(shape)" = monorepo ] && return 0
   dr_head "Workspace root"
   local loose=0 f
   for f in "$WORKSPACE_ROOT"/*.md; do
@@ -261,7 +262,7 @@ doctor_run() {
     doctor_ci
     doctor_env
     doctor_branches
-    doctor_root
+    [ "$(shape)" = monorepo ] || doctor_root
     doctor_trunk_state
     printf '\n%s%d fail, %d warn%s\n' "$DIM" "$fails" "$warns" "$OFF"
     [ "$fails" -eq 0 ]
