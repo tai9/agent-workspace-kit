@@ -40,6 +40,8 @@ is "rows by commit reuse the sibling" "$(extract_changelog_rows_from_note "$out"
 out2="$RELEASES_DIR/1.0.1+11.md"
 write_note_from_template "$TEMPLATE_BASE" "$out2" "1.0.1+11" "" "1"
 grep -q '^- \*\*Status:\*\* released ' "$out2" && t_ok "release status" || t_bad "release status" "released" "?"
+grep -qi 'shorebird' "$out2" && t_bad "channel legend names 'an OTA patch', not a specific patch service" "no 'Shorebird' mention" "$(grep -i shorebird "$out2")" || t_ok "channel legend names 'an OTA patch', not a specific patch service"
+grep -q 'ships via an OTA patch' "$out2" && t_ok "channel legend says 'ships via an OTA patch'" || t_bad "OTA legend wording" "ships via an OTA patch" "$(grep 'ships via' "$out2")"
 
 echo "next_patch_index after a deletion (documented, not fixed)"
 # Notes 1 and 3 exist, 2 was deleted: the function counts files, not the

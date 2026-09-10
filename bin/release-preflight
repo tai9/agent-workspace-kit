@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
     --platform) PLATFORM="${2:-}"; shift 2 ;;
     --skip-doctor) SKIP_DOCTOR="yes"; shift ;;
     -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    -*) die "Unknown flag: $1" ;;
+    -*) die "Unknown option: $1" ;;
     *) [[ -z "$ENV" ]] && ENV="$1" || die "Unexpected arg: $1"; shift ;;
   esac
 done
@@ -45,6 +45,7 @@ info "Pre-flight ($ENV, mode=$MODE)"
 # 1) Backend URL for this env, sourced from the workspace's own env file.
 preflight_base_url() { # <env>
   local spec var file; spec="$(cfg preflight.base_url_from)"
+  [[ -n "$spec" ]] || die "workspace.yml is missing preflight.base_url_from (see $WORKSPACE_YML) — needed to know which backend URL to health-check, e.g. preflight: { base_url_from: \"env:API_BASE_URL@backend/.env.{env}\" }"
   case "$spec" in env:*@*) ;; *) die "unsupported preflight.base_url_from: '$spec' (want env:VAR@path/.env.{env})";; esac
   var="${spec#env:}"; var="${var%%@*}"; file="${spec#*@}"; file="${file//\{env\}/$1}"
   [[ -f "$WORKSPACE_ROOT/$file" ]] || die ".env.$1 not found at $WORKSPACE_ROOT/$file"
@@ -106,6 +107,11 @@ LOG_DIR="${TMPDIR:-/tmp}/agent-workspace-kit"; mkdir -p "$LOG_DIR"
 n="$(cfg preflight.extra.#)"; i=0
 while [[ $i -lt ${n:-0} ]]; do
   name="$(cfg "preflight.extra.$i.name")"; run="$(cfg "preflight.extra.$i.run")"
+  # A plain string entry (like the endpoint list already supports) uses the
+  # string as both the command and its label.
+  if [[ -z "$name" && -z "$run" ]]; then
+    run="$(cfg "preflight.extra.$i")"; name="$run"
+  fi
   slug="$(printf '%s' "$name" | tr -c 'A-Za-z0-9' '-' )"; log="$LOG_DIR/$slug.log"
   info "Running ${name}…"
   if (cd "$WORKSPACE_ROOT" && bash -c "$run" >"$log" 2>&1); then check_ok "$name clean"; else check_fail "$name reported issues — see $log"; fi

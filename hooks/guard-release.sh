@@ -5,10 +5,19 @@
 # instruction was one tool call away from tagging a build and uploading it. This
 # turns that call into a confirmation prompt. It never blocks — the user can
 # still say yes in the same breath — it only removes "silently" as an option.
+#
+# Uses node (the kit's only hard dependency) to parse JSON, not python3 — a
+# machine without python3 must not let this guard silently never fire.
 set -euo pipefail
 
 payload=$(cat)
-cmd=$(printf '%s' "$payload" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_input",{}).get("command",""))' 2>/dev/null || true)
+cmd=$(printf '%s' "$payload" | node -e '
+  let d = require("fs").readFileSync(0, "utf8");
+  try {
+    const o = JSON.parse(d);
+    process.stdout.write((o.tool_input && o.tool_input.command) || "");
+  } catch (e) {}
+' 2>/dev/null || true)
 
 reason=""
 case "$cmd" in
@@ -19,13 +28,13 @@ case "$cmd" in
 esac
 
 if [ -n "$reason" ]; then
-  python3 - "$reason" <<'PY'
-import json, sys
-print(json.dumps({"hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "ask",
-    "permissionDecisionReason": sys.argv[1],
-}}))
-PY
+  node -e '
+    const reason = process.argv[1];
+    console.log(JSON.stringify({hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "ask",
+      permissionDecisionReason: reason,
+    }}));
+  ' -- "$reason"
 fi
 exit 0

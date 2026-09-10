@@ -9,7 +9,10 @@ read_version_file() {
   [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]] || die "Unexpected version '$ver' in $f (expected e.g. 1.0.1+36)"
   printf '%s' "$ver"
 }
-anchor_version() { read_version_file "$(anchor_version_file)"; }
+anchor_version() { # [dir] - optional other checkout of the anchor repo
+  if [[ -n "${1:-}" ]]; then read_version_file "$(_anchor_file_in "$1")"
+  else read_version_file "$(anchor_version_file)"; fi
+}
 anchor_release() {
   local cmd; cmd="$(cfg release.release_cmd)"; [ -n "$cmd" ] || die "release.release_cmd is required by generic-semver"
   local dir

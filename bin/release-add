@@ -4,7 +4,7 @@
 #
 # Run this right after you squash-merge a feat/fix/chore branch into the
 # anchor repo's trunk. It reads the squashed commit, classifies it as an OTA
-# (Dart-only) or Store (native) item, detects cross-repo coupling, and
+# (patch-safe) or Store (native) item, detects cross-repo coupling, and
 # appends a row to the inventory. Nothing ships here — items accumulate until
 # release-cut.
 #
@@ -42,7 +42,7 @@ while [[ $# -gt 0 ]]; do
     --be)     PAIRED_COMMIT="${2:-}"; shift 2 ;;
     --dry-run) DRY_RUN=yes; shift ;;
     -h|--help) sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    -*) die "Unknown flag: $1" ;;
+    -*) die "Unknown option: $1" ;;
     *)  [[ -z "$APP_COMMIT" ]] && APP_COMMIT="$1" || die "Unexpected arg: $1"; shift ;;
   esac
 done
@@ -124,5 +124,5 @@ info "  app     : $APP_SHORT"
 info "  be      : $BE_CELL"
 info "  coupled : $COUPLED"
 [[ "$COUPLED" == "yes" ]] && warn "Coupled item — the BE commit must be live before this app build ships."
-[[ "$CHANNEL" == "STORE" ]] && warn "Store item — ships via a full release (and may need an app_versions.min_build bump)."
+[[ "$CHANNEL" == "STORE" ]] && warn "Store item — ships via a full release; after cutting, the project's post_release commands may need to run (see release-live --post) if older builds must be forced to update."
 exit 0

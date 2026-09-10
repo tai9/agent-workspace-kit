@@ -1,5 +1,8 @@
 #!/usr/bin/env sh
 # Installed by bin/install-git-hooks into every repo in the workspace.
+# __TRUNK__ is substituted at install time from workspace.yml (per-repo in
+# multi-repo shape, the single top-level trunk in monorepo shape) — the same
+# way it already is for git-hooks/post-merge.
 #
 # The workspace rule is that all work happens in a worktree branched off the
 # trunk, never on the trunk itself. Nothing enforced it, and it was broken the
@@ -9,7 +12,7 @@
 # release tooling that legitimately commits to the trunk passes that flag.
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || exit 0
 case "$branch" in
-  main|develop) ;;
+  __TRUNK__) ;;
   *) exit 0 ;;
 esac
 

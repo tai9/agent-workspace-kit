@@ -25,6 +25,20 @@ printf '%s' "$out" | grep -q 'Shorebird is not initialised' && t_ok "warns about
 out="$(cd "$TMP/m" && WORKSPACE_ROOT="$TMP/m" bash "$KIT/bin/doctor" 2>&1 | strip_ansi)"
 printf '%s' "$out" | grep -q 'FAIL' && t_bad "doctor has no FAIL after init" "0 fail" "$(printf '%s' "$out" | grep FAIL)" || t_ok "doctor has no FAIL after init"
 
+echo "generated workspace.yml teaches its own shape (preflight/post_release skeletons)"
+grep -q '^# preflight:' "$TMP/m/workspace.yml" && t_ok "commented preflight: skeleton present" || t_bad "preflight skeleton" "# preflight:" "$(cat "$TMP/m/workspace.yml")"
+grep -q 'base_url_from' "$TMP/m/workspace.yml" && t_ok "preflight skeleton explains base_url_from" || t_bad "preflight base_url_from" "present" "missing"
+grep -q '^# post_release:' "$TMP/m/workspace.yml" && t_ok "commented post_release: skeleton present" || t_bad "post_release skeleton" "# post_release:" "$(cat "$TMP/m/workspace.yml")"
+# The skeleton is commented out, so it must not actually configure a live
+# preflight/post_release key that the parser would pick up.
+grep -q '^preflight:' "$TMP/m/workspace.yml" && t_bad "preflight stays commented (not a live key)" "no active preflight:" "found one" || t_ok "preflight stays commented (not a live key)"
+
+echo "release preflight on a fresh init fails with a helpful message, not an obscure one"
+pf_out="$(cd "$TMP/m" && WORKSPACE_ROOT="$TMP/m" bash "$KIT/bin/release-preflight" develop 2>&1)"; pf_rc=$?
+[ "$pf_rc" -ne 0 ] && t_ok "release preflight fails on a fresh init" || t_bad "release preflight fresh init" "non-zero" "0"
+printf '%s' "$pf_out" | grep -q 'preflight.base_url_from' && t_ok "preflight failure names the missing key" || t_bad "preflight failure names key" "preflight.base_url_from" "$pf_out"
+printf '%s' "$pf_out" | grep -q 'workspace.yml' && t_ok "preflight failure points at workspace.yml" || t_bad "preflight failure points at file" "workspace.yml" "$pf_out"
+
 echo "re-run"
 before_ws="$(cat "$TMP/m/workspace.yml")"
 before_settings_count="$(grep -c 'workspace-guards.sh' "$TMP/m/.claude/settings.json")"

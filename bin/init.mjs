@@ -289,6 +289,14 @@ function renderWorkspaceYml(cfg) {
   out.push('  contract_paths: []');
   out.push('contracts: []');
   out.push('');
+  out.push('# preflight:                    # optional; `release preflight` reads this before a cut');
+  out.push('#   base_url_from: "env:API_BASE_URL@backend/.env.{env}"  # backend URL to health-check');
+  out.push('#   endpoints: []                # paths to check, relative to the URL above');
+  out.push('#   extra: []                    # project checks (lint, analyze, ...) to run before a cut');
+  out.push('');
+  out.push('# post_release:                  # optional; project commands `release live --post` runs after a release');
+  out.push('#   - "node scripts/bump-version-gate.mjs {version}"');
+  out.push('');
   return out.join('\n');
 }
 

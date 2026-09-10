@@ -75,7 +75,7 @@ while [[ $# -gt 0 ]]; do
     --dry-run) DRY_RUN="yes"; shift ;;
     --allow-asset-diffs) ALLOW_ASSET_DIFFS="yes"; shift ;;
     -h|--help) sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) die "Unknown arg: $1" ;;
+    *) die "Unknown option: $1" ;;
   esac
 done
 
@@ -104,22 +104,11 @@ copy_env_into() { # <worktree>
     cp "$f" "$dest/"
   done
   shopt -u nullglob
-  # Android release signing is driven by a gitignored android/key.properties
-  # (points at the upload keystore). It is NOT in the worktree, so without this
-  # the AAB falls back to the debug key and the store rejects the upload. The
-  # keystore it references lives at an absolute path, so only the props file
-  # needs copying.
-  if [[ -f "$src/android/key.properties" ]]; then
-    cp "$src/android/key.properties" "$dest/android/key.properties"
-  fi
-  # private_keys/ (service-account JSON, etc.) is gitignored too, so the
-  # worktree lacks it and --distribute's upload step fails. A release
-  # adapter's ship command commonly defaults its service-account key path to
-  # <repo>/private_keys/..., so mirroring the dir here makes --distribute work
-  # without env overrides.
-  if [[ -d "$src/private_keys" ]]; then
-    mkdir -p "$dest/private_keys"
-    cp -R "$src/private_keys/." "$dest/private_keys/"
+  # Whatever else a specific build needs that is git-ignored (signing
+  # properties, private keys, ...) is ecosystem knowledge, not core knowledge
+  # — an adapter that needs it defines adapter_seed_worktree itself.
+  if declare -F adapter_seed_worktree >/dev/null; then
+    adapter_seed_worktree "$src" "$dest"
   fi
   return 0
 }
@@ -237,7 +226,7 @@ if [[ "$MODE" == "patch" ]]; then
   # The tag pins these commits even after the throwaway worktree is removed.
   PATCH_TIP="$(git -C "$WT" rev-parse HEAD)"
   anchor_git tag -f -a "$TAG" "$PATCH_TIP" \
-    -m "OTA patch $PIDX on $BASE_VER (items: ${ITEMS:-${COMMITS_OVERRIDE:-none}}) — live Dart baseline"
+    -m "OTA patch $PIDX on $BASE_VER (items: ${ITEMS:-${COMMITS_OVERRIDE:-none}}) — live patch baseline"
   ok "Advanced $TAG -> $(anchor_git rev-parse --short=12 "$PATCH_TIP") (patch $PIDX tip)."
 
   # Remove the worktree now, before deleting its branch — git refuses to
@@ -262,7 +251,7 @@ fi
 
 # ---------------------------------------------------------------------------
 # release
-case "$PLATFORM" in ios|android|both|all) ;; *) die "release platform must be ios|android|both";; esac
+case "$PLATFORM" in ios|android|both) ;; *) die "release platform must be ios|android|both";; esac
 [[ -z "$ITEMS" ]] && ITEMS="$(unreleased_rows | awk -F'|' '/^\|/ {gsub(/ /,"",$2); printf "%s ",$2}')"
 ITEMS="$(printf '%s' "$ITEMS" | xargs)"  # trim
 

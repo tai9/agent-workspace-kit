@@ -18,6 +18,8 @@
 # question, not a failure. Only a usage error (bad repo name, or a cwd that
 # is not inside any configured repo) exits non-zero (2).
 
+case "${1:-}" in -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac
+
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/release-common.sh"
 
 YEL=$'\033[33m'; GRN=$'\033[32m'; BLD=$'\033[1m'; OFF=$'\033[0m'

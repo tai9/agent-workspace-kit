@@ -12,6 +12,15 @@ printf 'name: demo\nversion: 1.9\n' > "$TMP/m/my-app/pubspec.yaml"
 printf 'name: demo\nversion: 1.9.1+76\n' > "$TMP/m/my-app/pubspec.yaml"
 mkdir -p "$TMP/wt"; printf 'version: 2.0.0+1\n' > "$TMP/wt/pubspec.yaml"
 is "reads another checkout" "2.0.0+1" "$(anchor_version_in "$TMP/wt")"
+is "anchor_version itself takes the optional dir arg (anchor_version_in is a thin call to it)" "2.0.0+1" "$(anchor_version "$TMP/wt")"
+
+echo "flutter-shorebird: adapter_seed_worktree (ecosystem-specific worktree seeding, moved out of core)"
+mkdir -p "$TMP/m/my-app/android"; printf 'storeFile=/abs/upload.jks\n' > "$TMP/m/my-app/android/key.properties"
+mkdir -p "$TMP/m/my-app/private_keys"; printf '{"type":"service_account"}' > "$TMP/m/my-app/private_keys/sa.json"
+mkdir -p "$TMP/seed_wt/android"
+adapter_seed_worktree "$TMP/m/my-app" "$TMP/seed_wt"
+is "adapter_seed_worktree copies android/key.properties" "storeFile=/abs/upload.jks" "$(cat "$TMP/seed_wt/android/key.properties" 2>/dev/null)"
+is "adapter_seed_worktree copies private_keys/" "$(cat "$TMP/m/my-app/private_keys/sa.json")" "$(cat "$TMP/seed_wt/private_keys/sa.json" 2>/dev/null)"
 
 echo "flutter-shorebird: anchor_release / anchor_patch (multi-repo, no subdir)"
 mkdir -p "$TMP/rel_wt/scripts"
@@ -188,5 +197,30 @@ env -i PATH="$PATH" TMP="$TMP" KIT="$KIT" tmp_kit="$tmp_kit" bash -c '
   source "$KIT/lib/adapter.sh"
   load_adapter
 ' >/dev/null 2>&1 && t_bad "adapter missing a required function dies" "non-zero" "0" || t_ok "adapter missing a required function dies"
+
+echo "the enforced adapter contract is exactly anchor_version, anchor_release, anchor_patch"
+tmp_kit2="$TMP/fakekit2"; mkdir -p "$tmp_kit2/adapters"
+cat > "$tmp_kit2/adapters/minimal.sh" <<'EOF'
+#!/usr/bin/env bash
+# No read_version_file at all — it is not part of the contract.
+anchor_version() { printf '1.0.0+1'; }
+anchor_release() { :; }
+anchor_patch()   { :; }
+EOF
+mkdir -p "$TMP/min"; git_init "$TMP/min"
+cat > "$TMP/min/workspace.yml" <<'EOF'
+shape: monorepo
+trunk: main
+repos: { app: { path: ., role: release-anchor } }
+release: { adapter: minimal, anchor_file: VERSION }
+EOF
+env -i PATH="$PATH" TMP="$TMP" KIT="$KIT" tmp_kit2="$tmp_kit2" bash -c '
+  WORKSPACE_ROOT="$TMP/min"
+  source "$KIT/lib/out.sh"; source "$KIT/lib/config.sh"; source "$KIT/lib/repos.sh"
+  KIT_ROOT="$tmp_kit2"
+  source "$KIT/lib/adapter.sh"
+  load_adapter
+' >/dev/null 2>&1 && t_ok "an adapter with only the three contract functions (no read_version_file) loads fine" \
+  || t_bad "three-function adapter loads" "exit 0" "non-zero"
 
 finish

@@ -207,13 +207,14 @@ ok=0
 diff <(printf '%s\n' "$old7_verdicts_nodoc") <(printf '%s\n' "$new7_verdicts_nodoc") >/tmp/parity-case7.diff 2>&1 || ok=1
 record "7. preflight — every check but workspace-doctor's own line reaches the same verdict" "$ok"
 
+# Guard 2's check runs first, unconditionally, and prints before the parity
+# score — a reader who stops reading at the score line must not be able to
+# miss a mutation of the real workspace. Its failure overrides a clean 7/7:
+# a parity score earned by mutating the thing being measured is not a pass.
+echo
+guard_check
 echo
 for r in "${RESULTS[@]}"; do printf '%s\n' "$r"; done
 echo
 echo "parity: $pass/7 identical"
-
-# Guard 2's check runs last, unconditionally, and its failure overrides a
-# clean 7/7 — a parity score earned by mutating the thing being measured is
-# not a pass.
-guard_check
 [ "$pass" -eq 7 ]

@@ -59,9 +59,15 @@ make_multi "$TMP/m2"; cp "$TMP/m2/workspace.yml" "$TMP/m/workspace.yml"
 
 echo "release-add: error paths"
 out="$(bash "$KIT/bin/release-add" --nope 2>&1 | strip_ansi)" || true
-printf '%s' "$out" | grep -q 'Unknown flag' && t_ok "unknown flag dies" || t_bad "unknown flag dies" "Unknown flag" "$out"
+printf '%s' "$out" | grep -q 'Unknown option' && t_ok "unknown flag dies" || t_bad "unknown flag dies" "Unknown option" "$out"
 out="$(bash "$KIT/bin/release-add" not-a-commit 2>&1 | strip_ansi)" || true
 printf '%s' "$out" | grep -q 'Not a commit in my-app' && t_ok "bad commit-ish dies naming the repo label" || t_bad "bad commit-ish dies naming the repo label" "Not a commit in my-app" "$out"
+
+echo "release-add: Store item warning names project config, not a specific hosted database"
+cstore=$(commit_file "$R" android/app/build.gradle "feat: native thing")
+out="$(bash "$KIT/bin/release-add" "$cstore" 2>&1 | strip_ansi)"
+printf '%s' "$out" | grep -q 'post_release' && t_ok "Store warning points at the project's post_release commands" || t_bad "Store warning" "post_release" "$out"
+printf '%s' "$out" | grep -qi 'app_versions\|min_build' && t_bad "Store warning no longer names a specific hosted table/column" "no app_versions/min_build mention" "$out" || t_ok "Store warning no longer names a specific hosted table/column"
 
 echo "release-add: pipe in the commit summary"
 c6=$(commit_file "$R" lib/features/pipe.dart 'fix: a | b')

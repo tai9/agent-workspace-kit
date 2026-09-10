@@ -53,6 +53,8 @@ out="$(bash "$KIT/bin/release-cut" patch production ios --dry-run 2>&1 | strip_a
 printf '%s' "$out" | grep -qF 'patch needs --items' && t_ok "refuses neither items nor commits" || t_bad "neither" "patch needs" "$out"
 out="$(bash "$KIT/bin/release-cut" release production bogus --dry-run 2>&1 | strip_ansi)" || true
 printf '%s' "$out" | grep -qF 'release platform must be ios|android|both' && t_ok "refuses an invalid release platform" || t_bad "invalid release platform" "must be ios" "$out"
+out="$(bash "$KIT/bin/release-cut" release production all --dry-run 2>&1 | strip_ansi)" || true
+printf '%s' "$out" | grep -qF 'release platform must be ios|android|both' && t_ok "refuses the undocumented 'all' platform value" || t_bad "undocumented 'all' platform" "must be ios|android|both" "$out"
 out="$(bash "$KIT/bin/release-cut" patch production ios --items 99 --dry-run 2>&1 | strip_ansi)" || true
 printf '%s' "$out" | grep -qF 'Item #99 not found in UNRELEASED.md' && t_ok "refuses an unknown item number" || t_bad "unknown item" "not found" "$out"
 out="$(bash "$KIT/bin/release-cut" patch production ios --items 1 --base 9.9.9+9 --dry-run 2>&1 | strip_ansi)" || true

@@ -10,9 +10,9 @@ Ships as a Claude Code plugin and a CLI from one shared core.
 sibling repos under a workspace root (multi-repo) or one repo with role
 directories (monorepo). Nothing else.
 
-Design: [`docs/design.md`](docs/design.md). Status: design approved, not yet
-implemented. First consumers: this kit's own origin workspace (multi-repo) and
-Foxy Junior (monorepo).
+Design: [`docs/design.md`](docs/design.md). Status: built and tested — see
+`docs/design.md`'s Verification section. First consumers: this kit's own
+origin workspace (multi-repo) and Foxy Junior (monorepo).
 
 ## Install
 
@@ -59,8 +59,8 @@ run from the workspace root:
 | `release add [<commit>] [--paired [<repo>:]<commit>] [--dry-run]` | Record a merged-but-unreleased item. |
 | `release status` | Print the unreleased inventory. |
 | `release preflight <env> [--mode patch\|release] [--platform ios\|android] [--skip-doctor]` | Gate before a cut. |
-| `release cut patch <env> <ios\|android> --items "<n ...>" [--dry-run]` | Ship an OTA patch. |
-| `release cut release <env> <ios\|android\|both> [--distribute] [--dry-run]` | Ship a store release. |
+| `release cut patch <env> <ios\|android> --items "<n ...>" [--commits "<sha ...>"] [--base <ver>] [--allow-asset-diffs] [--dry-run]` | Ship an OTA patch. |
+| `release cut release <env> <ios\|android\|both> [--items "<n ...>"] [--at <ref>] [--distribute] [--dry-run]` | Ship a store release. |
 | `live <version> [--platform ios\|android\|both] [--apply] [--merge-mirror] [--force-merge] [--post] [--post-args "<str>"]` | Report or apply a build going live. |
 | `contract-check [<repo>] [<base-ref>]` | Which cross-repo contracts a diff touches. |
 | `install-git-hooks [--dry-run]` | (Re)install the workspace's git hooks. |

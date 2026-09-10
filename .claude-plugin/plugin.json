@@ -5,5 +5,5 @@
   "author": { "name": "Tai Nguyen" },
   "repository": "https://github.com/tai9/agent-workspace-kit",
   "license": "MIT",
-  "keywords": ["release", "workspace", "hooks", "doctor", "flutter"]
+  "keywords": ["release", "workspace", "hooks", "doctor"]
 }

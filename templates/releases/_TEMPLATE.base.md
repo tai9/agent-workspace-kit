@@ -51,7 +51,7 @@ _TODO: one selling sentence, max 170 characters._
 | --- | --- | --- | --- |
 {{CHANGELOG_ROWS}}
 
-Channel legend: 🟢 OTA = Dart-only (ships via Shorebird patch) · 🔴 Store =
+Channel legend: 🟢 OTA = Dart-only (ships via an OTA patch) · 🔴 Store =
 native change (store release + an `app_versions.min_build` bump when older builds
 must not run against it).
 

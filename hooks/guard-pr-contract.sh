@@ -9,10 +9,19 @@
 # Registered from each repo's .claude/settings.json (relayed there through
 # workspace-guards.sh). The kit lives one directory up from this script; if
 # bin/contract-check is not there and executable, this exits quietly.
+#
+# Uses node (the kit's only hard dependency) to parse JSON, not python3 — a
+# machine without python3 must not let this guard silently never fire.
 set -uo pipefail
 
 payload=$(cat)
-cmd=$(printf '%s' "$payload" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_input",{}).get("command",""))' 2>/dev/null || true)
+cmd=$(printf '%s' "$payload" | node -e '
+  let d = require("fs").readFileSync(0, "utf8");
+  try {
+    const o = JSON.parse(d);
+    process.stdout.write((o.tool_input && o.tool_input.command) || "");
+  } catch (e) {}
+' 2>/dev/null || true)
 case "$cmd" in *"gh pr create"*) ;; *) exit 0;; esac
 
 here="$(git rev-parse --show-toplevel 2>/dev/null || true)"
@@ -26,17 +35,16 @@ check="$KIT/bin/contract-check"
 out="$(cd "$here" && bash "$check" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')"
 printf '%s' "$out" | grep -q "touches it here" || exit 0
 
-python3 - "$out" <<'PY'
-import json, sys
-report = sys.argv[1].strip()
-print(json.dumps({"hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "ask",
-    "permissionDecisionReason":
-        "This branch touches a cross-repo contract. Half a contract ships "
-        "silently — the missing side degrades to a default rather than failing.\n\n"
-        + report +
-        "\n\nConfirm the other side is handled, or say it is one-sided by design.",
-}}))
-PY
+node -e '
+  const report = process.argv[1].trim();
+  console.log(JSON.stringify({hookSpecificOutput: {
+    hookEventName: "PreToolUse",
+    permissionDecision: "ask",
+    permissionDecisionReason:
+      "This branch touches a cross-repo contract. Half a contract ships " +
+      "silently — the missing side degrades to a default rather than failing.\n\n" +
+      report +
+      "\n\nConfirm the other side is handled, or say it is one-sided by design.",
+  }}));
+' -- "$out"
 exit 0

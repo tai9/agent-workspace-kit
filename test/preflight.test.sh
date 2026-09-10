@@ -40,6 +40,38 @@ printf '%s' "$out" | grep -q 'Pre-flight FAILED' && t_ok "final line" || t_bad "
 rm "$TMP/m/my-app/.env.production"
 bash "$KIT/bin/release-preflight" production --skip-doctor >/dev/null 2>&1 && t_bad "missing env file dies" "1" "0" || t_ok "missing env file dies"
 
+echo "preflight: preflight.extra supports a plain string entry, the way endpoints already do"
+make_multi "$TMP/ex"; export WORKSPACE_ROOT="$TMP/ex"
+printf 'API_BASE_URL="https://api.example.test/"\n' > "$TMP/ex/my-app/.env.production"
+git -C "$TMP/ex/my-app" tag released/1.9.1+76
+cat >> "$TMP/ex/workspace.yml" <<EOF
+preflight:
+  base_url_from: "env:API_BASE_URL@my-app/.env.{env}"
+  endpoints: []
+  extra:
+    - "$TMP/ex/passing-check.sh"
+EOF
+cat > "$TMP/ex/passing-check.sh" <<'EOF'
+#!/usr/bin/env bash
+touch "$(dirname "$0")/check-ran"
+exit 0
+EOF
+chmod +x "$TMP/ex/passing-check.sh"
+out="$(bash "$KIT/bin/release-preflight" production --mode patch --skip-doctor 2>&1 | strip_ansi)"; rc=$?
+is "passes with a plain-string extra entry" "0" "$rc"
+[ -f "$TMP/ex/check-ran" ] && t_ok "the plain-string entry's command was actually executed" || t_bad "plain-string extra executes" "check-ran file" "missing"
+printf '%s' "$out" | grep -qF "$TMP/ex/passing-check.sh clean" && t_ok "the string itself is used as the check's label" || t_bad "string used as label" "$TMP/ex/passing-check.sh clean" "$out"
+
+echo "preflight: a plain-string extra entry that fails still fails preflight"
+rm -f "$TMP/ex/check-ran"
+cat > "$TMP/ex/passing-check.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+out="$(bash "$KIT/bin/release-preflight" production --mode patch --skip-doctor 2>&1 | strip_ansi)"; rc=$?
+is "a failing plain-string extra fails preflight" "1" "$rc"
+printf '%s' "$out" | grep -qF "$TMP/ex/passing-check.sh reported issues" && t_ok "failure reported against the string label" || t_bad "string extra failure reported" "reported issues" "$out"
+
 echo "preflight: expect present but body does not match -> fail, not ok"
 make_multi "$TMP/mismatch"
 printf 'API_BASE_URL="https://api.example.test"\n' > "$TMP/mismatch/my-app/.env.production"
