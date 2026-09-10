@@ -1,0 +1,92 @@
+shape: multi-repo
+
+repos:
+  app:
+    path: viespeak-app
+    trunk: develop
+    role: release-anchor
+    mirror: main
+  backend:
+    path: viespeak-be
+    trunk: main
+    role: service
+    deploy: continuous
+  landing:
+    path: viespeak-landing
+    trunk: main
+    role: other
+  sdk:
+    path: viespeak-ai-content-sdk
+    trunk: main
+    role: other
+    guards: false
+  marketing:
+    path: viespeak-marketing
+    trunk: main
+    role: other
+    guards: false
+
+release:
+  adapter: flutter-shorebird
+  anchor_file: viespeak-app/pubspec.yaml
+  tag: "released/{version}"
+  store_paths:
+    - android/
+    - ios/
+    - pubspec
+    - .gradle
+    - Podfile
+    - Info.plist
+    - AndroidManifest
+    - assets/
+  contract_paths:
+    - lib/core/services/api_service
+    - lib/core/services/app_version_service
+    - lib/core/services/voice_live_client
+    - lib/core/services/notification_service
+    - session.init
+    - version_gate
+
+contracts:
+  - name: referral
+    paths:
+      app: lib/features/learn_together
+      backend: referral
+      landing: invite
+  - name: gifts
+    paths:
+      app: lib/features/gift
+      backend: gift
+      landing: admin/gifts
+  - name: vieai-citations
+    paths:
+      app: vieai
+      backend: ai-index
+      landing: site-registry
+  - name: promo
+    paths:
+      app: lib/features/promo
+      backend: promo
+      landing: admin/promos
+  - name: offers
+    paths:
+      app: features/payment
+      backend: offers
+      landing: discount-codes
+  - name: learn-cap
+    paths:
+      app: features/learn
+      backend: learn-daily-cap
+
+preflight:
+  base_url_from: "env:API_BASE_URL@viespeak-app/.env.{env}"
+  endpoints:
+    - path: /health
+      expect: '"status"[[:space:]]*:[[:space:]]*"ok"'
+    - path: /api/app/version-status?platform={platform}&build=1
+  extra:
+    - name: flutter analyze
+      run: "cd viespeak-app && flutter analyze"
+
+post_release:
+  - "node scripts/lib/app-versions.mjs set --env-file viespeak-be/.env --platform {platform} --latest {build} {extra}"
