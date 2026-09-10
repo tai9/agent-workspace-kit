@@ -27,6 +27,7 @@ WS="$(cd "$WS" && pwd)"
 REPOS="viespeak-app viespeak-be viespeak-landing viespeak-ai-content-sdk viespeak-marketing"
 
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/awk-parity.XXXXXX")"
+ROOT="$(cd "$ROOT" && pwd)"  # normalise (TMPDIR can carry a trailing slash, e.g. macOS's /tmp)
 trap 'rm -rf "$ROOT"' EXIT
 OLD="$ROOT/old"
 NEW="$ROOT/new"
@@ -45,6 +46,52 @@ for r in $REPOS; do ln -s "$WS/$r" "$NEW/$r"; done
 mkdir -p "$NEW/node_modules"
 ln -s "$KIT" "$NEW/node_modules/agent-workspace-kit"
 cp "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/parity-workspace.yml" "$NEW/workspace.yml"
+
+# --- guard 1: verify by construction, not by assumption, that each side's
+# copied tooling actually resolves its own notion of "the workspace root" to
+# our scratch root and not to $WS. Both root-resolution mechanisms compute a
+# path from the sourced file's own location — a die() before ever reaching
+# a command that writes, if either resolves outside $ROOT.
+old_resolved="$(cd "$OLD" && bash -c 'source scripts/lib/release-common.sh >/dev/null 2>&1; printf "%s" "$WORKSPACE_ROOT"')"
+new_resolved="$(cd "$NEW" && WORKSPACE_ROOT="$NEW" bash -c 'source "'"$KIT"'/lib/release-common.sh" >/dev/null 2>&1; printf "%s" "$WORKSPACE_ROOT"')"
+assert_under_root() { # <label> <resolved> <must-be-under>
+  case "$2" in
+    "$3"|"$3"/*) printf 'root check: %s resolved workspace root to %s (OK, under %s)\n' "$1" "$2" "$3" ;;
+    *) printf 'FATAL: %s resolved workspace root to "%s", which is NOT under the scratch root "%s". Refusing to run anything that could write. Aborting before any case runs.\n' "$1" "$2" "$3" >&2; exit 3 ;;
+  esac
+}
+assert_under_root "old (scripts/release-*.sh)" "$old_resolved" "$ROOT"
+assert_under_root "new (bin/*, this kit)" "$new_resolved" "$ROOT"
+
+# --- guard 2: the real workspace must come out of this run byte-identical
+# to how it went in. Snapshot before any case runs; re-check after every
+# case has finished, and fail loudly — naming exactly what changed — rather
+# than let a silent mutation of the thing being measured pass as green. This
+# harness never repairs $WS itself; on a mismatch it reports and stops.
+guard_snapshot() {
+  {
+    printf 'workspace:\n'; git -C "$WS" status --porcelain=v1 -uall 2>&1
+    for r in $REPOS; do
+      printf 'repo:%s\n' "$r"
+      git -C "$WS/$r" status --porcelain=v1 -uall 2>&1
+      git -C "$WS/$r" rev-parse HEAD 2>&1
+      git -C "$WS/$r" tag --list 2>&1
+      git -C "$WS/$r" worktree list --porcelain 2>&1
+    done
+    printf 'unreleased-sha256:\n'; shasum -a 256 "$WS/releases/UNRELEASED.md" 2>&1
+  }
+}
+GUARD_PRE="$(guard_snapshot)"
+guard_check() { # call after all cases; fails loudly and aborts (exit 4) on any diff
+  local post; post="$(guard_snapshot)"
+  if [ "$GUARD_PRE" != "$post" ]; then
+    echo "FATAL: the real workspace at $WS changed during this run. This harness must never write to it." >&2
+    echo "--- before / after ---" >&2
+    diff <(printf '%s\n' "$GUARD_PRE") <(printf '%s\n' "$post") >&2
+    exit 4
+  fi
+  echo "guard: real workspace at $WS is unchanged (git status, HEAD, tags, worktrees, and releases/UNRELEASED.md checksum all match pre-run)"
+}
 
 pass=0
 declare -a RESULTS=()
@@ -164,4 +211,9 @@ echo
 for r in "${RESULTS[@]}"; do printf '%s\n' "$r"; done
 echo
 echo "parity: $pass/7 identical"
+
+# Guard 2's check runs last, unconditionally, and its failure overrides a
+# clean 7/7 — a parity score earned by mutating the thing being measured is
+# not a pass.
+guard_check
 [ "$pass" -eq 7 ]
