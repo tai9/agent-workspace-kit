@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# The kit's gate: shellcheck, the "no ecosystem in lib/" grep, the test suite.
+set -uo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+rc=0
+printf '\n\033[1mshellcheck\033[0m\n'
+if command -v shellcheck >/dev/null 2>&1; then
+  files=()
+  for f in "$ROOT"/lib/*.sh "$ROOT"/adapters/*.sh "$ROOT"/hooks/*.sh "$ROOT"/test/*.sh "$ROOT"/git-hooks/* "$ROOT"/bin/*; do
+    [ -f "$f" ] || continue
+    case "$f" in *.mjs) continue;; esac
+    files+=("$f")
+  done
+  shellcheck -S warning -e SC2034 "${files[@]}" && printf '  \033[32mok\033[0m   no warnings\n' || rc=1
+else
+  printf '  \033[33mwarn\033[0m shellcheck not installed (brew install shellcheck)\n'
+fi
+printf '\n\033[1mlib/ carries no ecosystem\033[0m\n'
+if [ -d "$ROOT/lib" ] && grep -rniE 'viespeak|pubspec|shorebird|supabase' "$ROOT/lib" >/dev/null 2>&1; then
+  grep -rniE 'viespeak|pubspec|shorebird|supabase' "$ROOT/lib"; rc=1
+else printf '  \033[32mok\033[0m\n'; fi
+printf '\n\033[1mtests\033[0m\n'
+bash "$ROOT/test/run.sh" || rc=1
+exit "$rc"

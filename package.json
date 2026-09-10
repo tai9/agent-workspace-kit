@@ -1,0 +1,13 @@
+{
+  "name": "agent-workspace-kit",
+  "version": "0.1.0",
+  "description": "Agent workflow kit: worktrees, guard hooks, drift doctor, release layer. Claude Code plugin + CLI.",
+  "type": "module",
+  "bin": { "agent-workspace-kit": "bin/agent-workspace-kit.mjs" },
+  "files": ["bin", "lib", "adapters", "hooks", "git-hooks", "templates", "skills", "agents", ".claude-plugin", "docs"],
+  "engines": { "node": ">=20" },
+  "packageManager": "pnpm@10.18.3",
+  "scripts": { "test": "bash test/run.sh", "check": "bash bin/check" },
+  "dependencies": { "yaml": "^2.5.0" },
+  "license": "MIT"
+}
