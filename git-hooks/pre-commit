@@ -1,0 +1,33 @@
+#!/usr/bin/env sh
+# Installed by bin/install-git-hooks into every repo in the workspace.
+#
+# The workspace rule is that all work happens in a worktree branched off the
+# trunk, never on the trunk itself. Nothing enforced it, and it was broken the
+# same day it was written down. This refuses the commit and names the fix.
+#
+# It is a reminder, not a cage: `git commit --no-verify` still goes through, and
+# release tooling that legitimately commits to the trunk passes that flag.
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || exit 0
+case "$branch" in
+  main|develop) ;;
+  *) exit 0 ;;
+esac
+
+# A worktree checkout of the trunk is fine — that is the release tooling's own
+# throwaway worktree, not the shared checkout.
+git rev-parse --git-dir | grep -q '/worktrees/' && exit 0
+
+printf '\n\033[31mrefusing to commit on %s\033[0m\n' "$branch" >&2
+cat >&2 <<'MSG'
+The workspace rule: work happens in a worktree branched off the trunk, never on
+the trunk itself, because the shared checkout can be switched out from under you
+by another session.
+
+  git worktree add .claude/worktrees/<task> -b <branch> origin/<trunk>
+  cp .envrc .claude/worktrees/<task>/        # gitignored, does not follow
+
+Then commit there and open a PR. If this commit really does belong on the trunk
+(release tooling, a merge), re-run it with --no-verify.
+
+MSG
+exit 1

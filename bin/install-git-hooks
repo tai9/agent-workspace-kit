@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+#
+# Installs the workspace git hooks (pre-commit everywhere, post-merge in the
+# release-anchor repo) into every repo that is cloned here. Git hooks live in
+# .git/hooks, which no repo can version, so this is what has to be re-run
+# after a fresh clone.
+#
+# When a repo's git dir already has a hook manager (a .husky directory), the
+# hook body is written to a distinctly named file (.husky/awk-<name>) instead
+# of overwriting the manager's own <name> file, and a line invoking it is
+# appended to that file — creating it if the manager has not yet. That line
+# is what `doctor` looks for to consider the hook installed; the manager's
+# file merely existing is not proof this kit's hook runs.
+#
+# Usage: install-git-hooks [--dry-run]
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/release-common.sh"
+
+DRY=no; [[ "${1:-}" == "--dry-run" ]] && DRY=yes
+
+render_hook() { # <name> -> stdout
+  case "$1" in
+    post-merge) sed -e "s#__TRUNK__#$(anchor_trunk)#g" -e "s#__INVENTORY__#$UNRELEASED_FILE#g" "$KIT_ROOT/git-hooks/post-merge";;
+    *) cat "$KIT_ROOT/git-hooks/$1";;
+  esac
+}
+
+install_into() { # <gitdir> <label> <name>
+  local gd="$1" label="$2" name="$3"
+  if [[ -d "$gd/.husky" ]]; then
+    if [[ "$DRY" != yes ]]; then
+      render_hook "$name" > "$gd/.husky/awk-$name"
+      chmod 0755 "$gd/.husky/awk-$name"
+      [[ -f "$gd/.husky/$name" ]] || printf '#!/usr/bin/env sh\n' > "$gd/.husky/$name"
+      grep -q "awk-$name" "$gd/.husky/$name" || printf 'sh "$(dirname -- "$0")/awk-%s"\n' "$name" >> "$gd/.husky/$name"
+    fi
+    printf '  %s: %s (via husky)\n' "$label" "$name"
+  else
+    if [[ ! -d "$gd/.git" ]]; then
+      printf '  skipped %s (not cloned)\n' "$label"
+      return 0
+    fi
+    if [[ "$DRY" != yes ]]; then
+      render_hook "$name" > "$gd/.git/hooks/$name"
+      chmod 0755 "$gd/.git/hooks/$name"
+    fi
+    printf '  %s: %s\n' "$label" "$name"
+  fi
+}
+
+if [[ "$(shape)" == monorepo ]]; then
+  install_into "$WORKSPACE_ROOT" "$(cfg_default name workspace)" pre-commit
+  install_into "$WORKSPACE_ROOT" "$(cfg_default name workspace)" post-merge
+else
+  for n in $(repo_names); do
+    install_into "$(repo_git_dir "$n")" "$(repo_label "$n")" pre-commit
+    [[ "$n" == "$(anchor_name)" ]] && install_into "$(repo_git_dir "$n")" "$(repo_label "$n")" post-merge
+  done
+fi

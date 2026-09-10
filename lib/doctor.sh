@@ -90,11 +90,14 @@ doctor_hooks() {
   else anchor_label="$(repo_label "$an")"; fi
 
   # A hook installed straight in the git dir, or through a hook manager that
-  # owns a .husky directory (a monorepo consumer may already use one).
-  if [ -x "$agd/.git/hooks/post-merge" ] || [ -f "$agd/.husky/post-merge" ]; then
+  # owns a .husky directory (a monorepo consumer may already use one). A
+  # manager file merely existing is not proof this kit's hook runs — it must
+  # invoke the awk-post-merge file bin/install-git-hooks wrote.
+  if [ -x "$agd/.git/hooks/post-merge" ] \
+    || { [ -f "$agd/.husky/post-merge" ] && grep -q "awk-post-merge" "$agd/.husky/post-merge" 2>/dev/null; }; then
     dr_pass "post-merge installed in $anchor_label"
   else
-    dr_warn "post-merge not installed — run scripts/install-git-hooks.sh"
+    dr_warn "post-merge not installed — run bin/install-git-hooks"
   fi
 
   if grep -q "workspace-guards.sh" "$WORKSPACE_ROOT/.claude/settings.json" 2>/dev/null; then
