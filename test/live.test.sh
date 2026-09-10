@@ -41,19 +41,64 @@ cat >> "$TMP/ro/workspace.yml" <<'EOF'
 post_release:
   - "echo should-not-run >> should-not-exist.log"
 EOF
-snapshot() { find "$1" -type f -exec sha256sum {} \; 2>/dev/null | sed "s#$1/##" | sort; }
+# Excludes refs/remotes/** (incl. their reflogs) and FETCH_HEAD: the report
+# deliberately fetches the mirror branch (a read of the remote, restoring
+# accuracy the reviewer required) which legitimately updates those two
+# remote-tracking bookkeeping paths. Nothing a person owns — the working
+# tree, local branches/tags, notes, the inventory — may still move.
+snapshot() {
+  find "$1" -type f \
+    -not -path '*/.git/refs/remotes/*' \
+    -not -path '*/.git/logs/refs/remotes/*' \
+    -not -name 'FETCH_HEAD' \
+    -exec sha256sum {} \; 2>/dev/null | sed "s#$1/##" | sort
+}
+# Local refs, excluding refs/remotes/** for the same reason the snapshot does.
+local_refs() { git -C "$1" for-each-ref --format='%(refname) %(objectname)' | grep -v '^refs/remotes/' | sort; }
 snapshot "$TMP/ro" > "$TMP/ro-before.txt"
 tags_before="$(git -C "$RO" tag --list | sort)"
-refs_before="$(git -C "$RO" for-each-ref --format='%(refname) %(objectname)' | sort)"
+refs_before="$(local_refs "$RO")"
 origin_refs_before="$(git -C "$TMP/ro-origin" for-each-ref --format='%(refname) %(objectname)' | sort)"
 bash "$KIT/bin/release-live" 1.9.1+76 >/dev/null 2>&1
 bash "$KIT/bin/release-live" 1.9.1+76 --dry-run >/dev/null 2>&1
 snapshot "$TMP/ro" > "$TMP/ro-after.txt"
 is "read-only: no file content changed" "$(cat "$TMP/ro-before.txt")" "$(cat "$TMP/ro-after.txt")"
 is "read-only: no local tags changed" "$tags_before" "$(git -C "$RO" tag --list | sort)"
-is "read-only: no local refs changed" "$refs_before" "$(git -C "$RO" for-each-ref --format='%(refname) %(objectname)' | sort)"
+is "read-only: no local refs changed" "$refs_before" "$(local_refs "$RO")"
 is "read-only: origin refs unchanged" "$origin_refs_before" "$(git -C "$TMP/ro-origin" for-each-ref --format='%(refname) %(objectname)' | sort)"
 [ -f "$TMP/ro/should-not-exist.log" ] && t_bad "read-only: post_release never ran" "no log" "log" || t_ok "read-only: post_release never ran"
+
+# --- the report's fetch does its job: a stale local remote-tracking ref must
+# not make the report lie about the mirror. Push the merge from a SECOND
+# clone (so this repo's own refs/remotes/origin/main is left stale), then
+# assert the no-flag report still sees the mirror as up to date.
+echo "fetch keeps the report accurate"
+make_multi "$TMP/fr"; export WORKSPACE_ROOT="$TMP/fr"; FR="$TMP/fr/my-app"
+git_init "$TMP/fr-origin"; git -C "$TMP/fr-origin" config receive.denyCurrentBranch ignore
+git -C "$FR" remote add origin "$TMP/fr-origin"; git -C "$FR" push -q origin main develop
+git -C "$FR" checkout -q develop; commit_file "$FR" lib/a.dart "fix: a" >/dev/null; git -C "$FR" tag released/1.9.1+76
+git -C "$FR" push -q origin refs/tags/released/1.9.1+76
+mkdir -p "$TMP/fr/releases"; printf -- '- **Status:** released 2026-09-09\n' > "$TMP/fr/releases/1.9.1+76.md"
+# A second, independent clone merges the tag into main and pushes it —
+# $FR's own refs/remotes/origin/main never saw this push.
+git clone -q "$TMP/fr-origin" "$TMP/fr-clone2" >/dev/null 2>&1
+git -C "$TMP/fr-clone2" checkout -q main
+git -C "$TMP/fr-clone2" merge --no-ff -q released/1.9.1+76 -m "merge from clone2"
+git -C "$TMP/fr-clone2" push -q origin main
+out="$(bash "$KIT/bin/release-live" 1.9.1+76 2>&1 | strip_ansi)"
+printf '%s' "$out" | grep -q 'origin/main already contains released/1.9.1+76' && t_ok "fetch sees the mirror is already up to date" || t_bad "fetch keeps report accurate" "origin/main already contains" "$out"
+printf '%s' "$out" | grep -q 'does NOT contain' && t_bad "fetch: no stale does-NOT-contain warning" "absent" "present" || t_ok "fetch: no stale does-NOT-contain warning"
+
+# --- no network: a remote that cannot be reached warns and still reports ---
+echo "no network"
+make_multi "$TMP/nn"; export WORKSPACE_ROOT="$TMP/nn"; NN="$TMP/nn/my-app"
+git -C "$NN" remote add origin "$TMP/nn/does-not-exist"
+git -C "$NN" checkout -q develop; commit_file "$NN" lib/a.dart "fix: a" >/dev/null; git -C "$NN" tag released/1.9.1+76
+mkdir -p "$TMP/nn/releases"; printf -- '- **Status:** released 2026-09-09\n' > "$TMP/nn/releases/1.9.1+76.md"
+out="$(bash "$KIT/bin/release-live" 1.9.1+76 2>&1 | strip_ansi)"; rc=$?
+is "no network: report still exits 0" "0" "$rc"
+printf '%s' "$out" | grep -q 'could not fetch origin/main' && t_ok "no network: warns about the failed fetch" || t_bad "no network: warns" "could not fetch origin/main" "$out"
+printf '%s' "$out" | grep -q '=== Plan for' && t_ok "no network: still produces a plan" || t_bad "no network: still produces a plan" "=== Plan for" "$out"
 
 # --- convergence: both orders, and re-running the same platform twice -------
 echo "convergence"

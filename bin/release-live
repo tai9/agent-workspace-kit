@@ -167,11 +167,13 @@ MERGE_NEEDED=0
 if [[ -z "$MIRROR" ]]; then
   info "  no mirror branch configured for $(anchor_name) — skipping the mirror check"
 else
-  # origin is the authority for what the mirror holds, but the report must
-  # not mutate anything (no flags = read-only) — it judges origin/$MIRROR
-  # from whatever remote-tracking ref is already cached locally, without
-  # fetching. The apply path's own `pull --ff-only` (below) does the actual
-  # fetch, right before it needs fresh data to merge against.
+  # origin is the authority for what the mirror holds — the local checkout
+  # drifts. Fetching here only updates the remote-tracking ref (a read of
+  # the remote, not a write to anything a person owns — the working tree,
+  # local branches, tags and notes are untouched), so it stays even in
+  # report mode: the report is the one output a human reads before deciding
+  # whether to push, and it must be accurate.
+  anchor_git_remote fetch --quiet origin "$MIRROR" 2>/dev/null || warn "  ! could not fetch origin/$MIRROR — judging $MIRROR from the local ref"
   MIRROR_REF="$MIRROR"
   anchor_git rev-parse -q --verify "origin/$MIRROR" >/dev/null && MIRROR_REF="origin/$MIRROR"
   if [[ -n "$TAG_COMMIT" ]]; then
