@@ -43,6 +43,23 @@ is "patch runs from the worktree root" "pwd=$TMP/patch_wt" "$(sed -n 3p "$TMP/pa
 is "patch exports ALLOW_ASSET_DIFFS" "ALLOW_ASSET_DIFFS=1" "$(sed -n 4p "$TMP/patch.log")"
 is "the worktree's wrapper file is now the anchor's current one" "$(cat "$TMP/m/my-app/scripts/shorebird-patch.sh")" "$(cat "$TMP/patch_wt/scripts/shorebird-patch.sh")"
 
+echo "flutter-shorebird: anchor_patch dies if the anchor's current wrapper is gone"
+rm -f "$TMP/m/my-app/scripts/shorebird-patch.sh"
+mkdir -p "$TMP/patch_wt_missing/scripts"
+cat > "$TMP/patch_wt_missing/scripts/shorebird-patch.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'stale-wrapper-ran\n' > "$LOG"
+EOF
+chmod +x "$TMP/patch_wt_missing/scripts/shorebird-patch.sh"
+(LOG="$TMP/missing.log" anchor_patch stg android "$TMP/patch_wt_missing" 1) >/dev/null 2>&1 \
+  && t_bad "anchor_patch dies when the anchor's current wrapper is missing" "non-zero" "0" \
+  || t_ok "anchor_patch dies when the anchor's current wrapper is missing"
+if [ -f "$TMP/missing.log" ]; then
+  t_bad "the stale worktree wrapper is never executed" "no log file written" "$(cat "$TMP/missing.log")"
+else
+  t_ok "the stale worktree wrapper is never executed"
+fi
+
 echo "monorepo path"
 make_mono "$TMP/o"; load "$TMP/o"
 is "reads app/pubspec.yaml" "1.0.0+6" "$(anchor_version)"
@@ -123,7 +140,27 @@ mkdir -p "$TMP/g2wt/svc"
 
 echo "unknown adapter"
 sed -i.bak 's/generic-semver/nope/' "$TMP/g/workspace.yml"
-( load "$TMP/g" ) >/dev/null 2>&1 && t_bad "unknown adapter dies" "non-zero" "0" || t_ok "unknown adapter dies"
+out="$( ( load "$TMP/g" ) 2>&1 1>/dev/null )"; rc=$?
+[ "$rc" -ne 0 ] && t_ok "unknown adapter dies" || t_bad "unknown adapter dies" "non-zero" "0"
+case "$out" in
+  *flutter-shorebird*) t_ok "unknown-adapter message names a real available adapter" ;;
+  *) t_bad "unknown-adapter message names a real available adapter" "contains flutter-shorebird" "$out" ;;
+esac
+
+echo "release.adapter missing entirely"
+mkdir -p "$TMP/noadapter/svc"; git_init "$TMP/noadapter"; printf '1.0.0+1\n' > "$TMP/noadapter/svc/VERSION"
+cat > "$TMP/noadapter/workspace.yml" <<'EOF'
+shape: monorepo
+trunk: main
+repos: { svc: { path: svc, role: release-anchor } }
+release: { anchor_file: svc/VERSION }
+EOF
+out="$( ( load "$TMP/noadapter" ) 2>&1 1>/dev/null )"; rc=$?
+[ "$rc" -ne 0 ] && t_ok "missing release.adapter dies" || t_bad "missing release.adapter dies" "non-zero" "0"
+case "$out" in
+  *flutter-shorebird*) t_ok "missing-release.adapter message names a real available adapter" ;;
+  *) t_bad "missing-release.adapter message names a real available adapter" "contains flutter-shorebird" "$out" ;;
+esac
 
 echo "adapter missing a required function"
 tmp_kit="$TMP/fakekit"; mkdir -p "$tmp_kit/adapters"

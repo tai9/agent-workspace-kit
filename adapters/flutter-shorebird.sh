@@ -25,6 +25,7 @@ anchor_patch() {
   dir="$3/$(repo_subdir "$(anchor_name)")"; dir="${dir%/}"
   # Ship with the *current* wrapper, not the tag's snapshot, so wrapper fixes
   # apply even when patching a base whose committed scripts/ predates them.
-  cp "$(anchor_path)/$cmd" "$dir/$cmd"
+  cp "$(anchor_path)/$cmd" "$dir/$cmd" \
+    || die "cannot ship a patch: the current wrapper is missing at $(anchor_path)/$cmd"
   ( cd "$dir" && ALLOW_ASSET_DIFFS="$4" "$cmd" "$1" "$2" )
 }
