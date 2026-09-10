@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#
+# Print what is merged but not yet shipped: the rows of releases/UNRELEASED.md.
+# Deliberately thin — rendering this into something human-readable is a later
+# skill's job, not this command's.
+#
+# Usage: release-status
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/release-common.sh"
+
+ensure_unreleased
+unreleased_rows

@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+#
+# Which cross-repo contracts does a change touch, and which side is missing?
+#
+#   bin/contract-check [<repo>] [<base-ref>]
+#
+# Defaults to the repo the current directory is inside of, and its trunk.
+# Prints one block per contract the diff touches, listing the other repos
+# that normally move with it and whether anything there has moved. It
+# reports; it decides nothing. The full rules for each contract belong in
+# docs/cross-repo-contracts.md (see `templates/cross-repo-contracts.md`).
+#
+# <repo>      a repo table name from workspace.yml (`repos.<name>`). Defaults
+#             to whichever repo the current directory resolves into.
+# <base-ref>  what to diff against. Defaults to origin/<that repo's trunk>.
+#
+# Exit code is 0 whether or not any contract is half-done — a "?" is a
+# question, not a failure. Only a usage error (bad repo name, or a cwd that
+# is not inside any configured repo) exits non-zero (2).
+
+case "${1:-}" in -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;; esac
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/release-common.sh"
+
+YEL=$'\033[33m'; GRN=$'\033[32m'; BLD=$'\033[1m'; OFF=$'\033[0m'
+
+usage_die() { err "$*"; exit 2; }
+
+REPO_ARG="${1:-}"
+BASE_ARG="${2:-}"
+
+REPO=""
+SRC=""
+
+if [ -n "$REPO_ARG" ]; then
+  printf '%s\n' "$(repo_names)" | grep -qxF "$REPO_ARG" \
+    || usage_die "no such repo: $REPO_ARG (configured: $(repo_names | tr '\n' ' '))"
+  REPO="$REPO_ARG"
+  SRC="$(repo_git_dir "$REPO")"
+else
+  HERE="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  [ -n "$HERE" ] \
+    || usage_die "usage: contract-check [<repo>] [<base-ref>] — the current directory is not inside a git repository"
+
+  if [ "$(shape)" = monorepo ]; then
+    case "$PWD" in
+      "$WORKSPACE_ROOT") REL="" ;;
+      "$WORKSPACE_ROOT"/*) REL="${PWD#"$WORKSPACE_ROOT"/}" ;;
+      *) usage_die "cwd $PWD is not inside the workspace at $WORKSPACE_ROOT" ;;
+    esac
+    matches=()
+    for n in $(repo_names); do
+      sub="$(repo_subdir "$n")"
+      case "$REL" in
+        "$sub" | "$sub"/*) matches+=("$n") ;;
+      esac
+    done
+    case "${#matches[@]}" in
+      1) REPO="${matches[0]}" ;;
+      0) usage_die "cwd $PWD is not under any configured repo's directory" ;;
+      *) usage_die "cwd $PWD is ambiguous — it matches more than one repo: ${matches[*]}" ;;
+    esac
+  else
+    STRIPPED="$HERE"
+    case "$STRIPPED" in *"/.claude/worktrees/"*) STRIPPED="${STRIPPED%%/.claude/worktrees/*}" ;; esac
+    # $HERE came from `git rev-parse --show-toplevel`, which resolves symlinks
+    # (e.g. macOS's /tmp -> /private/tmp); a repo's configured path may not
+    # be resolved yet, so canonicalize both sides the same way before compare.
+    STRIPPED="$(cd -P "$STRIPPED" 2>/dev/null && pwd -P || printf '%s' "$STRIPPED")"
+    matches=()
+    for n in $(repo_names); do
+      gd="$(cd -P "$(repo_git_dir "$n")" 2>/dev/null && pwd -P || true)"
+      [ -n "$gd" ] && [ "$gd" = "$STRIPPED" ] && matches+=("$n")
+    done
+    case "${#matches[@]}" in
+      1) REPO="${matches[0]}" ;;
+      0) usage_die "cwd (resolved to $STRIPPED) does not match any configured repo" ;;
+      *) usage_die "cwd (resolved to $STRIPPED) is ambiguous — it matches more than one repo: ${matches[*]}" ;;
+    esac
+  fi
+  SRC="$HERE"
+fi
+
+# --- contracts table ---------------------------------------------------------
+CN="$(cfg contracts.#)"
+if [ -z "$CN" ] || [ "$CN" -eq 0 ]; then
+  printf 'no contracts configured in workspace.yml\n'
+  exit 0
+fi
+
+# --- what changed --------------------------------------------------------
+trunk="$(repo_trunk "$REPO")"
+base="${BASE_ARG:-origin/$trunk}"
+
+git -C "$SRC" rev-parse -q --verify "$base" >/dev/null 2>&1 \
+  || { printf '%s not found locally — fetch it, or pass a base ref explicitly.\n' "$base"; exit 0; }
+
+SUB="$(repo_subdir "$REPO")"
+if [ -n "$SUB" ]; then
+  changed="$(git -C "$SRC" diff --name-only "$base"... -- "$SUB" 2>/dev/null | sed "s#^$SUB/##")"
+else
+  changed="$(git -C "$SRC" diff --name-only "$base"... 2>/dev/null)"
+fi
+[ -n "$changed" ] || { printf 'no changes against %s\n' "$base"; exit 0; }
+
+# Count files matching <pattern> in <other repo> that are either uncommitted
+# or ahead of that repo's own trunk — looked for in its checkout AND each of
+# its worktrees, because in this workflow the paired change usually lands in
+# a worktree first, not on the trunk. In a monorepo the sibling is just a
+# different subdirectory of the same repo, so scope the search to it.
+count_moved() { # <other-repo> <pattern>
+  local other="$1" pat="$2" gd sub t wt n moved=0
+  gd="$(repo_git_dir "$other")"
+  sub="$(repo_subdir "$other")"
+  t="$(repo_trunk "$other")"
+  for wt in $(git -C "$gd" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}'); do
+    if [ -n "$sub" ]; then
+      n="$( { git -C "$wt" status --porcelain --untracked-files=all -- "$sub" | awk '{print $2}'
+              git -C "$wt" diff --name-only "origin/$t"... -- "$sub" 2>/dev/null; } \
+            | sed "s#^$sub/##" | grep -icE "$pat" || true )"
+    else
+      n="$( { git -C "$wt" status --porcelain --untracked-files=all | awk '{print $2}'
+              git -C "$wt" diff --name-only "origin/$t"... 2>/dev/null; } \
+            | grep -icE "$pat" || true )"
+    fi
+    moved=$((moved + n))
+  done
+  printf '%s' "$moved"
+}
+
+printf '%schecking %s against %s%s\n\n' "$BLD" "$(repo_label "$REPO")" "$base" "$OFF"
+
+i=0
+while [ "$i" -lt "$CN" ]; do
+  name="$(cfg "contracts.$i.name")"
+  mine="$(cfg "contracts.$i.paths.$REPO")"
+  if [ -n "$mine" ] && printf '%s\n' "$changed" | grep -qiE "$mine"; then
+    printf '%s%s%s — this change touches it here.\n' "$BLD" "$name" "$OFF"
+    for other in $(repo_names); do
+      [ "$other" = "$REPO" ] && continue
+      pat="$(cfg "contracts.$i.paths.$other")"
+      [ -n "$pat" ] || continue
+      moved="$(count_moved "$other" "$pat")"
+      if [ "$moved" -gt 0 ]; then
+        printf '  %sok%s   %s has %s uncommitted or unmerged file(s) matching /%s/\n' "$GRN" "$OFF" "$(repo_label "$other")" "$moved" "$pat"
+      else
+        printf '  %s?%s    %s has nothing matching /%s/ — intended?\n' "$YEL" "$OFF" "$(repo_label "$other")" "$pat"
+      fi
+    done
+    printf '  read: docs/cross-repo-contracts.md#%s\n\n' "$name"
+  fi
+  i=$((i + 1))
+done
+
+printf 'Contracts are listed in docs/cross-repo-contracts.md. A "?" is a question,\nnot a failure: plenty of changes legitimately touch one side only.\n'

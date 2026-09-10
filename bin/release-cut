@@ -1,0 +1,311 @@
+#!/usr/bin/env bash
+#
+# Cut a release or a patch from the UNRELEASED.md inventory.
+#
+# Ships from a clean, throwaway git worktree (never your working tree), reusing
+# the workspace's own release adapter (release.adapter in workspace.yml) for
+# the actual ship — this command never calls a named ship tool directly.
+#
+#   PATCH  — stacks only the picked OTA commits onto the live released base, so
+#            you can hotfix even while native work sits unreleased on the trunk.
+#   RELEASE— ships the trunk commit (everything up to it), bumps the build,
+#            and tags the new released base.
+#
+# Usage:
+#   release-cut patch   <env> <platform> --items "1 3" [--base <ver>] [--dry-run]
+#   release-cut release <env> <platform> [--items "1 2"] [--at <ref>]
+#                       [--distribute] [--dry-run]
+#
+#   <env>       develop | production
+#   <platform>  ios | android        (patches are per-platform; release accepts
+#                                      "both" too — forwarded to the adapter)
+#   --items     space-separated UNRELEASED.md item numbers to ship.
+#               Required for patch (unless --commits is given instead).
+#               Defaults to ALL items for release.
+#   --commits   (patch only) space-separated full/short app commit SHAs to
+#               ship directly, bypassing UNRELEASED.md lookup entirely.
+#               Alternative to --items for shipping the *same* already-noted
+#               batch to a second platform (UNRELEASED.md no longer has those
+#               rows once the first platform ships) — the note reuses the
+#               sibling platform's patch note for changelog/dependency text
+#               if one matches this exact commit set, else falls back to
+#               minimal git-log-derived rows flagged for manual review.
+#   --base      (patch only) released/<version> to patch onto; default is the
+#               single highest released/* tag. iOS and Android can end up on
+#               different live released bases (one platform ships a store
+#               build the other doesn't) — your release adapter's own status
+#               tooling shows the true per-platform state; pass --base to
+#               target the version that's actually live on <platform> when
+#               it isn't the latest tag.
+#   --at        (release only) trunk commit to ship; default the anchor's trunk
+#               HEAD.
+#   --distribute(release+ios only) upload the build to the store.
+#   --dry-run   resolve and print the plan, then stop before any mutation.
+#   --allow-asset-diffs (patch only) force the patch through the ship command's
+#               benign asset-diff warning (e.g. the MaterialIcons font
+#               re-subset that icon tree-shaking emits). Real bundled assets
+#               are classified STORE and never enter a patch, so any diff left
+#               here is the auto-generated kind — but you still opt in so it's
+#               never silent.
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/release-common.sh"
+
+MODE="${1:-}"; shift || true
+case "$MODE" in patch|release) ;; *) die "Usage: release-cut patch|release <env> <platform> ...";; esac
+
+ENV="${1:-}"; shift || true
+PLATFORM="${1:-}"; shift || true
+[[ -n "$ENV" && -n "$PLATFORM" ]] || die "Need <env> and <platform>."
+case "$ENV" in develop|production) ;; *) die "Unknown env: $ENV";; esac
+
+ITEMS=""
+COMMITS_OVERRIDE=""
+AT="$(anchor_trunk)"
+DISTRIBUTE="no"
+DRY_RUN="no"
+ALLOW_ASSET_DIFFS="no"
+BASE_OVERRIDE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --items) ITEMS="${2:-}"; shift 2 ;;
+    --commits) COMMITS_OVERRIDE="${2:-}"; shift 2 ;;
+    --at) AT="${2:-}"; shift 2 ;;
+    --base) BASE_OVERRIDE="${2:-}"; shift 2 ;;
+    --distribute) DISTRIBUTE="yes"; shift ;;
+    --dry-run) DRY_RUN="yes"; shift ;;
+    --allow-asset-diffs) ALLOW_ASSET_DIFFS="yes"; shift ;;
+    -h|--help) sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) die "Unknown option: $1" ;;
+  esac
+done
+
+WORKTREE_BASE="$WORKSPACE_ROOT/.release-worktrees"
+WT=""  # set when created; cleaned by trap
+cleanup() {
+  [[ -n "$WT" && -d "$WT" ]] || return 0
+  info "Cleaning up worktree $WT"
+  anchor_git worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
+}
+trap cleanup EXIT
+
+copy_env_into() { # <worktree>
+  local src dest f
+  src="$(anchor_path)"; dest="$1/$(repo_subdir "$(anchor_name)")"; dest="${dest%/}"
+  shopt -s nullglob
+  # Only the GITIGNORED env files need copying — they carry the secrets and are
+  # absent from a fresh worktree. The tracked `.env*.example` files are already
+  # checked out at the worktree's own ref, and copying our working-tree copy
+  # over them leaves the worktree dirty; `git cherry-pick` then refuses with
+  # "local changes would be overwritten" the moment a patched commit touches
+  # one. That went unnoticed until a commit that edited `.env.example` was the
+  # first to trip over it.
+  for f in "$src"/.env*; do
+    anchor_git check-ignore -q -- "$f" || continue
+    cp "$f" "$dest/"
+  done
+  shopt -u nullglob
+  # Whatever else a specific build needs that is git-ignored (signing
+  # properties, private keys, ...) is ecosystem knowledge, not core knowledge
+  # — an adapter that needs it defines adapter_seed_worktree itself.
+  if declare -F adapter_seed_worktree >/dev/null; then
+    adapter_seed_worktree "$src" "$dest"
+  fi
+  return 0
+}
+
+ensure_unreleased
+
+# ---------------------------------------------------------------------------
+if [[ "$MODE" == "patch" ]]; then
+  [[ -n "$ITEMS" || -n "$COMMITS_OVERRIDE" ]] \
+    || die "patch needs --items \"<n> ...\" or --commits \"<sha> ...\""
+  [[ -z "$ITEMS" || -z "$COMMITS_OVERRIDE" ]] \
+    || die "pass --items OR --commits, not both"
+  case "$PLATFORM" in ios|android) ;; *) die "patch platform must be ios|android";; esac
+
+  if [[ -n "$BASE_OVERRIDE" ]]; then
+    BASE_VER="$BASE_OVERRIDE"
+  else
+    BASE_VER="$(latest_released_version || true)"
+  fi
+  [[ -n "$BASE_VER" ]] || die "No released/* tag — cut a release before patching."
+  TAG="$(released_tag_for "$BASE_VER")"
+  anchor_git rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null \
+    || die "Tag $TAG not found."
+
+  declare -a COMMITS=()
+  if [[ -n "$COMMITS_OVERRIDE" ]]; then
+    # Direct commit list — bypasses UNRELEASED.md entirely (see --commits
+    # doc above). No OTA/Store channel check is possible here since there's
+    # no inventory row; that check already happened when this same batch
+    # was first shipped via --items.
+    for c in $COMMITS_OVERRIDE; do
+      full="$(anchor_git rev-parse "$c" 2>/dev/null || true)"
+      [[ -n "$full" ]] || die "Cannot resolve commit: $c"
+      COMMITS+=("$full")
+    done
+  else
+    # Resolve picked items -> full app commits, refusing any non-OTA pick.
+    for n in $ITEMS; do
+      ch="$(unreleased_channel_for "$n")"
+      [[ -n "$ch" ]] || die "Item #$n not found in UNRELEASED.md"
+      [[ "$ch" == "OTA" ]] || die "Item #$n is a Store item — patches carry OTA only. Cut a release instead."
+      short="$(unreleased_commit_for "$n")"
+      full="$(anchor_git rev-parse "$short" 2>/dev/null || true)"
+      [[ -n "$full" ]] || die "Cannot resolve commit for item #$n ($short)."
+      COMMITS+=("$full")
+    done
+  fi
+
+  PIDX="$(next_patch_index "$BASE_VER")"
+  OUT_FILE="$RELEASES_DIR/$BASE_VER.patch$PIDX.md"
+
+  info "── PATCH plan ──────────────────────────────"
+  info "  base       : $BASE_VER (tag $TAG)"
+  info "  env/plat   : $ENV / $PLATFORM"
+  if [[ -n "$COMMITS_OVERRIDE" ]]; then
+    info "  items      : (none — shipped via --commits, same batch/other platform)"
+  else
+    info "  items      : $ITEMS"
+  fi
+  info "  commits    : ${COMMITS[*]}"
+  info "  asset-diffs: $ALLOW_ASSET_DIFFS (force benign asset diffs through)"
+  info "  note file  : ${OUT_FILE#$WORKSPACE_ROOT/}"
+  if [[ "$DRY_RUN" == "yes" ]]; then ok "Dry run — stopping before any change."; exit 0; fi
+
+  mkdir -p "$WORKTREE_BASE"
+  WT="$WORKTREE_BASE/patch-$BASE_VER-$PIDX"
+  TMP_BRANCH="release-patch-$BASE_VER-$PIDX"
+  anchor_git worktree add -B "$TMP_BRANCH" "$WT" "$TAG"
+  copy_env_into "$WT"
+
+  if [[ -n "$COMMITS_OVERRIDE" ]]; then
+    # --commits ships a batch that's already fully baked into $TAG (that's
+    # its whole precondition — see the flag's doc comment above): the tag
+    # was advanced to exactly this commit set by the sibling platform's
+    # earlier run. Re-cherry-picking here would not reliably land as a clean
+    # empty no-op: if a *later* commit in that same batch touched the same
+    # lines as an earlier one (item N+1 editing what item N just changed),
+    # replaying item N alone against the combined N+(N+1) tree is a genuine
+    # 3-way conflict for git, even though the content is already correct —
+    # so just build from the tag as-is instead of touching history at all.
+    info "already-applied commit set (second-platform reship) — skipping cherry-pick, building from $TAG as-is"
+  else
+    for c in "${COMMITS[@]}"; do
+      info "cherry-pick $c"
+      # --empty=keep: this item may already be baked into $TAG's tree (e.g. it
+      # shipped to one platform already and this cut is the same item's
+      # other-platform leg, landing on the same tag) — the cherry-pick then
+      # resolves to no diff, and git's default (--empty=drop, which still stops
+      # to ask rather than silently dropping) aborts the whole cut. --allow-empty
+      # alone does NOT cover this "became empty" case, only an originally-empty
+      # commit — --empty=keep is what actually commits it, harmlessly, as a
+      # marker that this content is confirmed present at this point in the chain.
+      # A PR merged with a merge commit (rather than squashed) has two parents,
+      # and cherry-pick hard-fails on it unless told which side is the mainline.
+      # -m 1 replays diff(first parent -> merge), i.e. exactly the PR's content,
+      # which is what the squash commit would have been. Squash commits (one
+      # parent) must NOT get -m, so pick per commit.
+      local_parents=$(git -C "$WT" rev-list --parents -n 1 "$c" | wc -w)
+      if (( local_parents > 2 )); then
+        info "  (merge commit — replaying against first parent, -m 1)"
+        git -C "$WT" cherry-pick -m 1 --allow-empty --empty=keep "$c"
+      else
+        git -C "$WT" cherry-pick --allow-empty --empty=keep "$c"
+      fi
+    done
+  fi
+
+  info "shipping patch from worktree…"
+  ALLOW_FLAG=0; [[ "$ALLOW_ASSET_DIFFS" == "yes" ]] && ALLOW_FLAG=1
+  anchor_patch "$ENV" "$PLATFORM" "$WT" "$ALLOW_FLAG"
+
+  # Advance the live baseline: released/<ver> now points at THIS patch's tip
+  # (base + cherry-picks), so the next patch stacks on top instead of being
+  # re-derived from the store base — which would silently drop prior patches.
+  # The tag pins these commits even after the throwaway worktree is removed.
+  PATCH_TIP="$(git -C "$WT" rev-parse HEAD)"
+  anchor_git tag -f -a "$TAG" "$PATCH_TIP" \
+    -m "OTA patch $PIDX on $BASE_VER (items: ${ITEMS:-${COMMITS_OVERRIDE:-none}}) — live patch baseline"
+  ok "Advanced $TAG -> $(anchor_git rev-parse --short=12 "$PATCH_TIP") (patch $PIDX tip)."
+
+  # Remove the worktree now, before deleting its branch — git refuses to
+  # delete a branch that's still checked out in another worktree.
+  cleanup
+  WT=""
+
+  if [[ -n "$COMMITS_OVERRIDE" ]]; then
+    write_note_from_template_by_commits "$TEMPLATE_PATCH" "$OUT_FILE" "$BASE_VER" "$PIDX" "$BASE_VER" "${COMMITS[@]}"
+    # Nothing to remove from UNRELEASED.md — this batch's rows were already
+    # removed when it first shipped (via --items) to the other platform.
+  else
+    write_note_from_template "$TEMPLATE_PATCH" "$OUT_FILE" "$BASE_VER" "$PIDX" "$ITEMS"
+    remove_unreleased_rows "$ITEMS"
+  fi
+  anchor_git branch -D "$TMP_BRANCH" 2>/dev/null || true
+
+  ok "Patch $BASE_VER.patch$PIDX shipped ($PLATFORM/$ENV)."
+  info "Items moved out of UNRELEASED.md into ${OUT_FILE#$WORKSPACE_ROOT/}."
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# release
+case "$PLATFORM" in ios|android|both) ;; *) die "release platform must be ios|android|both";; esac
+[[ -z "$ITEMS" ]] && ITEMS="$(unreleased_rows | awk -F'|' '/^\|/ {gsub(/ /,"",$2); printf "%s ",$2}')"
+ITEMS="$(printf '%s' "$ITEMS" | xargs)"  # trim
+
+anchor_git rev-parse --verify --quiet "$AT^{commit}" >/dev/null || die "Not a commit: $AT"
+AT_FULL="$(anchor_git rev-parse "$AT")"
+CUR_VER="$(anchor_version)"
+NEXT_BUILD=$(( $(version_build "$CUR_VER") + 1 ))
+PRED_VER="$(version_name "$CUR_VER")+$NEXT_BUILD"
+OUT_FILE="$RELEASES_DIR/$PRED_VER.md"
+
+info "── RELEASE plan ────────────────────────────"
+info "  ship commit: $AT_FULL ($AT)"
+info "  env/plat   : $ENV / $PLATFORM   distribute=$DISTRIBUTE"
+info "  version    : $CUR_VER -> $PRED_VER (predicted; the adapter bumps)"
+info "  items      : ${ITEMS:-<none>}"
+info "  note file  : ${OUT_FILE#$WORKSPACE_ROOT/}"
+info "  will tag   : $(released_tag_for "$PRED_VER") on $(anchor_trunk) after bump"
+if [[ "$DRY_RUN" == "yes" ]]; then ok "Dry run — stopping before any change."; exit 0; fi
+
+mkdir -p "$WORKTREE_BASE"
+WT="$WORKTREE_BASE/release-$PRED_VER"
+anchor_git worktree add --detach "$WT" "$AT_FULL"
+copy_env_into "$WT"
+
+info "shipping release from worktree…"
+anchor_release "$ENV" "$PLATFORM" "$DISTRIBUTE" "$WT"
+
+# The real build number the release adapter landed on (it owns the bump).
+NEW_VER="$(anchor_version_in "$WT")"
+if [[ "$NEW_VER" != "$PRED_VER" ]]; then
+  warn "Landed $NEW_VER (predicted $PRED_VER) — using actual."
+  OUT_FILE="$RELEASES_DIR/$NEW_VER.md"
+fi
+
+# Reflect the bump onto the trunk and tag the released base there so future
+# patches stack on a trunk commit whose tree matches what shipped. The
+# worktree's copy of the anchor file is what the build actually produced, so
+# copy IT over the checkout's copy rather than re-deriving the bump with sed
+# against the real checkout.
+DEST_FILE="$(anchor_version_file)"
+REL_FILE="${DEST_FILE#$(anchor_git_dir)/}"
+cp "$WT/$REL_FILE" "$DEST_FILE"
+anchor_git add -- "$REL_FILE"
+# This lands a commit on the trunk, which the workspace's own pre-commit hook
+# refuses by design — this bump is the one deliberate, tooling-driven
+# exception, so --no-verify.
+anchor_git commit -m "chore(release): bump to $NEW_VER" --no-verify >/dev/null
+anchor_git tag "$(released_tag_for "$NEW_VER")"
+ok "Tagged $(released_tag_for "$NEW_VER") and committed the bump on $(anchor_trunk)."
+
+write_note_from_template "$TEMPLATE_BASE" "$OUT_FILE" "$NEW_VER" "" "$ITEMS"
+[[ -n "$ITEMS" ]] && remove_unreleased_rows "$ITEMS"
+
+ok "Release $NEW_VER shipped ($PLATFORM/$ENV)."
+info "Note: ${OUT_FILE#$WORKSPACE_ROOT/}"
+warn "Next steps: upload the store artifact(s); if older builds must be blocked, raise the minimum-build gate in your backend; push the $(released_tag_for "$NEW_VER") tag."
+exit 0

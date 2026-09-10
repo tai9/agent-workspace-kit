@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+#
+# Pre-flight gate before cutting a release or patch. Read-only — verifies the
+# backend is live for the target env, the configured endpoints answer, the
+# version anchor makes sense against the last released tag, and the project's
+# own checks (release.preflight.extra, workspace-doctor) are clean.
+#
+# Usage:
+#   release-preflight <env> [--mode patch|release] [--platform ios|android] [--skip-doctor]
+#
+#   <env>          develop | production   (which backend to health-check)
+#   --mode         patch (default) or release — tunes the version assertion
+#   --platform     used only to shape endpoint queries (default ios)
+#   --skip-doctor  skip the workspace-doctor step
+#
+# Exit code is non-zero if any hard check fails.
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/release-common.sh"
+
+ENV=""
+MODE="patch"
+PLATFORM="ios"
+SKIP_DOCTOR="no"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mode) MODE="${2:-}"; shift 2 ;;
+    --platform) PLATFORM="${2:-}"; shift 2 ;;
+    --skip-doctor) SKIP_DOCTOR="yes"; shift ;;
+    -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) die "Unknown option: $1" ;;
+    *) [[ -z "$ENV" ]] && ENV="$1" || die "Unexpected arg: $1"; shift ;;
+  esac
+done
+
+[[ -n "$ENV" ]] || die "Usage: release-preflight <develop|production> [--mode patch|release]"
+case "$ENV" in develop|production) ;; *) die "Unknown env: $ENV (use develop|production)";; esac
+case "$MODE" in patch|release) ;; *) die "Unknown mode: $MODE (use patch|release)";; esac
+
+FAIL=0
+check_fail() { err "  ✗ $*"; FAIL=1; }
+check_ok()   { ok  "  ✓ $*"; }
+
+info "Pre-flight ($ENV, mode=$MODE)"
+
+# 1) Backend URL for this env, sourced from the workspace's own env file.
+preflight_base_url() { # <env>
+  local spec var file; spec="$(cfg preflight.base_url_from)"
+  [[ -n "$spec" ]] || die "workspace.yml is missing preflight.base_url_from (see $WORKSPACE_YML) — needed to know which backend URL to health-check, e.g. preflight: { base_url_from: \"env:API_BASE_URL@backend/.env.{env}\" }"
+  case "$spec" in env:*@*) ;; *) die "unsupported preflight.base_url_from: '$spec' (want env:VAR@path/.env.{env})";; esac
+  var="${spec#env:}"; var="${var%%@*}"; file="${spec#*@}"; file="${file//\{env\}/$1}"
+  [[ -f "$WORKSPACE_ROOT/$file" ]] || die ".env.$1 not found at $WORKSPACE_ROOT/$file"
+  local v; v="$(grep -E "^$var=" "$WORKSPACE_ROOT/$file" | head -n1 | sed -E "s/^$var=//" | tr -d '"')"
+  [[ -n "$v" ]] || die "No $var in $file"
+  printf '%s' "$v"
+}
+BASE="$(preflight_base_url "$ENV")"; BASE="${BASE%/}"; info "Backend: $BASE"
+
+# 2) Every configured endpoint answers as expected (or is at least reachable).
+n="$(cfg preflight.endpoints.#)"; i=0
+while [[ $i -lt ${n:-0} ]]; do
+  path="$(cfg "preflight.endpoints.$i.path")"; expect="$(cfg "preflight.endpoints.$i.expect")"
+  [[ -n "$path" ]] || path="$(cfg "preflight.endpoints.$i")"
+  path="${path//\{platform\}/$PLATFORM}"; path="${path//\{env\}/$ENV}"; label="${path%%\?*}"
+  body="$(curl -fsS --max-time 10 "$BASE$path" 2>/dev/null || true)"
+  if [[ -n "$expect" ]]; then
+    printf '%s' "$body" | grep -qE "$expect" && check_ok "GET $label -> ok" \
+      || check_fail "GET $label did not match expect (got: ${body:-<no response>})"
+  else
+    [[ -n "$body" ]] && check_ok "GET $label reachable" || check_fail "GET $label unreachable"
+  fi
+  i=$((i+1))
+done
+
+# 3) Version sanity.
+CUR_VER="$(anchor_version)"
+LIVE_VER="$(latest_released_version || true)"
+info "anchor version: $CUR_VER ; live released tag: ${LIVE_VER:-<none>}"
+if [[ "$MODE" == "patch" ]]; then
+  if [[ -z "$LIVE_VER" ]]; then
+    check_fail "patch mode but no released/* tag exists — cut a release first"
+  elif [[ "$CUR_VER" == "$LIVE_VER" ]]; then
+    check_ok "anchor version matches live released base ($LIVE_VER)"
+  else
+    warn  "  ! anchor version ($CUR_VER) != live base ($LIVE_VER) — patch builds off the tag, not develop HEAD"
+  fi
+else
+  check_ok "release mode — release will bump $CUR_VER"
+fi
+
+# 4) Coupled-item reminder from the inventory.
+COUPLED_ROWS="$(unreleased_rows | grep -iE '\| *(yes|maybe) *\|$' || true)"
+if [[ -n "$COUPLED_ROWS" ]]; then
+  warn "  ! Inventory has coupled item(s) — confirm the paired BE commit is the *deployed* one before shipping:"
+  printf '%s\n' "$COUPLED_ROWS" | sed 's/^/      /' >&2
+fi
+
+# 5) Store-cut reminder for the version-gate follow-up.
+if [[ "$MODE" == "release" ]]; then
+  if unreleased_rows | grep -q '🔴 Store'; then
+    warn "  ! Store items present — after release, run the project's post_release commands (release-live --post) if old builds must be forced to update."
+  fi
+fi
+
+# 6) Project-specific checks (analyzer, linter, ...), each independent of the
+# others — one failing must not stop the rest from running.
+LOG_DIR="${TMPDIR:-/tmp}/agent-workspace-kit"; mkdir -p "$LOG_DIR"
+n="$(cfg preflight.extra.#)"; i=0
+while [[ $i -lt ${n:-0} ]]; do
+  name="$(cfg "preflight.extra.$i.name")"; run="$(cfg "preflight.extra.$i.run")"
+  # A plain string entry (like the endpoint list already supports) uses the
+  # string as both the command and its label.
+  if [[ -z "$name" && -z "$run" ]]; then
+    run="$(cfg "preflight.extra.$i")"; name="$run"
+  fi
+  slug="$(printf '%s' "$name" | tr -c 'A-Za-z0-9' '-' )"; log="$LOG_DIR/$slug.log"
+  info "Running ${name}…"
+  if (cd "$WORKSPACE_ROOT" && bash -c "$run" >"$log" 2>&1); then check_ok "$name clean"; else check_fail "$name reported issues — see $log"; fi
+  i=$((i+1))
+done
+
+# Workspace drift is a release concern, not a housekeeping one: a rules file
+# nobody reads, agent config that died with a clone, or an env key documented
+# nowhere all reach the build being cut. Doctor reports; a FAIL fails preflight.
+if [[ "$SKIP_DOCTOR" == "no" ]]; then
+  echo
+  if bash "$KIT_ROOT/bin/doctor" >"$LOG_DIR/doctor.log" 2>&1; then check_ok "workspace-doctor clean"; else check_fail "workspace-doctor found drift — see $LOG_DIR/doctor.log"; fi
+fi
+
+echo
+if [[ "$FAIL" -eq 0 ]]; then
+  ok "Pre-flight passed."
+  exit 0
+else
+  err "Pre-flight FAILED — resolve the ✗ items before cutting."
+  exit 1
+fi

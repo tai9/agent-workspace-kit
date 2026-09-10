@@ -1,0 +1,9 @@
+{
+  "name": "agent-workspace-kit",
+  "description": "Release inventory, OTA/store cuts, go-live, drift doctor and cross-repo contract review for a mobile app plus backend workspace.",
+  "version": "0.1.0",
+  "author": { "name": "Tai Nguyen" },
+  "repository": "https://github.com/tai9/agent-workspace-kit",
+  "license": "MIT",
+  "keywords": ["release", "workspace", "hooks", "doctor"]
+}

@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+#
+# Record a merged-but-unreleased item in releases/UNRELEASED.md.
+#
+# Run this right after you squash-merge a feat/fix/chore branch into the
+# anchor repo's trunk. It reads the squashed commit, classifies it as an OTA
+# (patch-safe) or Store (native) item, detects cross-repo coupling, and
+# appends a row to the inventory. Nothing ships here — items accumulate until
+# release-cut.
+#
+# Usage:
+#   release-add [<commit-ish>] [--paired [<repo>:]<commit>] [--be <commit>] [--dry-run]
+#
+#   <commit-ish>       defaults to the anchor repo's trunk HEAD (the commit you
+#                      just squash-merged). Accepts any git ref/hash.
+#   --paired [<repo>:]<commit>
+#                      the paired commit for a coordinated cross-repo feature.
+#                      With a repo: prefix, names any repo in the table; without
+#                      one, resolves to the workspace's single service repo
+#                      (dies if there is more than one — use the repo: form).
+#                      Its presence marks the item as cross-repo coupled and
+#                      records that commit as a release dependency.
+#   --be <commit>      alias for --paired against the single service repo (kept
+#                      for backward compatibility).
+#   --dry-run          print what would be recorded; write nothing.
+#
+# Examples:
+#   release-add                              # record the anchor trunk HEAD
+#   release-add 4411d0f                      # record a specific commit
+#   release-add HEAD --be a1b2c3d            # coordinated app+service feature
+#   release-add HEAD --paired backend:a1b2c3d
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/release-common.sh"
+
+APP_COMMIT=""
+PAIRED_REPO=""
+PAIRED_COMMIT=""
+DRY_RUN=no
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --paired) case "${2:-}" in *:*) PAIRED_REPO="${2%%:*}"; PAIRED_COMMIT="${2#*:}";; *) PAIRED_COMMIT="${2:-}";; esac; shift 2 ;;
+    --be)     PAIRED_COMMIT="${2:-}"; shift 2 ;;
+    --dry-run) DRY_RUN=yes; shift ;;
+    -h|--help) sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) die "Unknown option: $1" ;;
+    *)  [[ -z "$APP_COMMIT" ]] && APP_COMMIT="$1" || die "Unexpected arg: $1"; shift ;;
+  esac
+done
+
+A="$(anchor_name)"
+# A git worktree's ".git" is a file, not a directory — accept either.
+_is_git_repo() { [[ -d "$1/.git" || -f "$1/.git" ]]; }
+
+_is_git_repo "$(anchor_git_dir)" || die "$(repo_label "$A") is not a git repo at $(anchor_git_dir)"
+
+# Default to the anchor trunk HEAD — the just-merged squash commit.
+if [[ -z "$APP_COMMIT" ]]; then
+  APP_COMMIT="$(anchor_trunk)"
+fi
+repo_git "$A" rev-parse --verify --quiet "$APP_COMMIT^{commit}" >/dev/null \
+  || die "Not a commit in $(repo_label "$A"): $APP_COMMIT"
+
+APP_SHORT="$(commit_short "$A" "$APP_COMMIT")"
+
+# Idempotency — don't double-record the same commit. A dry run must not
+# create the inventory file just to check it (ensure_unreleased writes one if
+# missing), so only touch it here if it already exists; a first dry run
+# against a workspace with no inventory yet has nothing to have recorded.
+if [[ "$DRY_RUN" == yes ]]; then
+  if [[ -f "$UNRELEASED_FILE" ]] && unreleased_has_commit "$APP_SHORT"; then
+    warn "Commit $APP_SHORT is already in UNRELEASED.md — nothing to do."
+    exit 0
+  fi
+else
+  ensure_unreleased
+  if unreleased_has_commit "$APP_SHORT"; then
+    warn "Commit $APP_SHORT is already in UNRELEASED.md — nothing to do."
+    exit 0
+  fi
+fi
+
+CHANNEL="$(classify_commit "$A" "$APP_COMMIT")"
+TYPE="$(commit_type "$A" "$APP_COMMIT")"
+SUMMARY="$(commit_summary "$A" "$APP_COMMIT")"
+# Markdown table cells can't contain a raw pipe. Escaping it as "\|" does NOT
+# stop awk -F'|' from splitting on it (awk has no escape handling for -F), so
+# a summary with a pipe would shift every later field and could resolve the
+# wrong commit downstream (unreleased_commit_for / unreleased_channel_for).
+# The HTML entity still renders as a literal "|" inside a Markdown table cell
+# but contains no "|" byte, so awk -F'|' leaves it alone. The "&" is escaped
+# as "\&" because bash's patsub_replacement behavior (default since 5.2)
+# treats an unescaped "&" in a //pattern/replacement replacement as "insert
+# the matched text" (like sed) — without the backslash this would reinsert
+# the very pipe we are trying to get rid of.
+SUMMARY="${SUMMARY//|/\&#124;}"
+
+# Resolve / detect coupling.
+COUPLED="no"
+BE_CELL="—"
+if [[ -n "$PAIRED_COMMIT" ]]; then
+  [[ -n "$PAIRED_REPO" ]] || PAIRED_REPO="$(single_service)"
+  _is_git_repo "$(repo_git_dir "$PAIRED_REPO")" \
+    || die "$(repo_label "$PAIRED_REPO") is not a git repo at $(repo_git_dir "$PAIRED_REPO")"
+  repo_git "$PAIRED_REPO" rev-parse --verify --quiet "$PAIRED_COMMIT^{commit}" >/dev/null \
+    || die "Not a commit in $(repo_label "$PAIRED_REPO"): $PAIRED_COMMIT"
+  BE_CELL="\`$(commit_short "$PAIRED_REPO" "$PAIRED_COMMIT")\`"
+  COUPLED="yes"
+elif commit_looks_coupled "$A" "$APP_COMMIT"; then
+  warn "Heads up: this commit touches a BE-contract consumer file."
+  warn "If it depends on a backend change, re-run with: --be <be-commit> or --paired <repo>:<commit>"
+  COUPLED="maybe"
+fi
+
+if [[ "$DRY_RUN" == yes ]]; then
+  ok "Dry run — would record:"
+else
+  append_unreleased_row "$(channel_emoji "$CHANNEL")" "$TYPE" "$SUMMARY" "$APP_SHORT" "$BE_CELL" "$COUPLED"
+  ok "Recorded item in UNRELEASED.md:"
+fi
+info "  channel : $(channel_emoji "$CHANNEL")"
+info "  type    : $TYPE"
+info "  summary : $SUMMARY"
+info "  app     : $APP_SHORT"
+info "  be      : $BE_CELL"
+info "  coupled : $COUPLED"
+[[ "$COUPLED" == "yes" ]] && warn "Coupled item — the BE commit must be live before this app build ships."
+[[ "$CHANNEL" == "STORE" ]] && warn "Store item — ships via a full release; after cutting, the project's post_release commands may need to run (see release-live --post) if older builds must be forced to update."
+exit 0

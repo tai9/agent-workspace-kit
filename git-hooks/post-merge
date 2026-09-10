@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+# Installed into the release-anchor repo's .git/hooks by bin/install-git-hooks.
+# __TRUNK__ and __INVENTORY__ are substituted at install time from
+# workspace.yml. Prints a reminder after a squash-merge lands on the trunk.
+# Never fails a merge.
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+[ "$branch" = "__TRUNK__" ] || exit 0
+head=$(git rev-parse --short HEAD 2>/dev/null || echo "")
+inv="__INVENTORY__"
+if [ -f "$inv" ] && grep -q "$head" "$inv" 2>/dev/null; then exit 0; fi
+printf '\n  \033[33m•\033[0m __TRUNK__ moved to %s and it is not in %s yet.\n' "$head" "$(basename "$inv")"
+printf '    Record it:  bin/release-add\n\n'
+exit 0

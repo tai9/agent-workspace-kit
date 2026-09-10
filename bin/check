@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# The kit's gate: shellcheck, the "no ecosystem knowledge in core" grep, the
+# test suite, and (when run from inside a configured workspace) the doctor.
+#
+# Usage: check [-h|--help]
+case "${1:-}" in
+  -h|--help) sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+set -uo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+rc=0
+printf '\n\033[1mshellcheck\033[0m\n'
+if command -v shellcheck >/dev/null 2>&1; then
+  files=()
+  for f in "$ROOT"/lib/*.sh "$ROOT"/adapters/*.sh "$ROOT"/hooks/*.sh "$ROOT"/test/*.sh "$ROOT"/git-hooks/* "$ROOT"/bin/*; do
+    [ -f "$f" ] || continue
+    case "$f" in *.mjs) continue;; esac
+    files+=("$f")
+  done
+  shellcheck -S warning -e SC2034 "${files[@]}" && printf '  \033[32mok\033[0m   no warnings\n' || rc=1
+else
+  printf '  \033[33mwarn\033[0m shellcheck not installed (brew install shellcheck)\n'
+fi
+printf '\n\033[1mcore carries no ecosystem knowledge\033[0m\n'
+# Scope: lib/, hooks/, git-hooks/ and bin/ — everywhere the design says the
+# core must stay ecosystem-agnostic. Carve-outs: bin/init.mjs is the one file
+# allowed to know ecosystem filenames (the project-type detector), and this
+# script itself contains the pattern below. adapters/ and templates/ are
+# never scanned — ecosystem knowledge belongs there by design.
+ECO_PATTERN='viespeak|pubspec|shorebird|supabase'
+eco_hits=""
+for d in lib hooks git-hooks bin; do
+  [ -d "$ROOT/$d" ] || continue
+  hit="$(grep -rniE "$ECO_PATTERN" "$ROOT/$d" 2>/dev/null \
+    | grep -v -E "^$ROOT/bin/init\.mjs:|^$ROOT/bin/check:" || true)"
+  [ -n "$hit" ] && eco_hits="$eco_hits$hit
+"
+done
+if [ -n "$eco_hits" ]; then
+  printf '%s' "$eco_hits"; rc=1
+else printf '  \033[32mok\033[0m\n'; fi
+printf '\n\033[1mtests\033[0m\n'
+bash "$ROOT/test/run.sh" || rc=1
+printf '\n\033[1mdoctor (workspace drift)\033[0m\n'
+_d="$PWD"
+case "$_d" in *"/.claude/worktrees/"*) _d="${_d%%/.claude/worktrees/*}";; esac
+_found=""
+while [ "$_d" != "/" ]; do
+  if [ -f "$_d/workspace.yml" ]; then _found="$_d"; break; fi
+  _d="$(dirname "$_d")"
+done
+if [ -n "$_found" ]; then
+  bash "$ROOT/bin/doctor" || rc=1
+else
+  printf '  \033[33mskipped\033[0m no workspace.yml found from %s — not a configured workspace\n' "$PWD"
+fi
+exit "$rc"
