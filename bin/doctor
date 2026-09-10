@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#
+# Reports workspace drift: rules files, agent config left out of version
+# control, hook wiring, CI coverage for repos with test suites, env keys
+# missing from their .env.example, stale branches and leftover worktrees,
+# loose documents at the workspace root, and trunk state relative to origin.
+# Read-only — never changes anything.
+#
+# Usage: doctor
+#
+# Exit code is non-zero if anything FAILed; warnings alone exit 0.
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/release-common.sh"
+source "$KIT_ROOT/lib/doctor.sh"
+
+doctor_run
