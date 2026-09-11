@@ -201,3 +201,45 @@ of them hold.
   leave the TODOs), (2) clear the shipped items from `UNRELEASED.md`, and
   (3) tag + push `released/<version>`. A store build with no release note is
   an incomplete release.
+
+## Where a release fact belongs
+
+Three files, and the test is how long the fact stays true.
+
+| The fact | Where it goes |
+| --- | --- |
+| True for every release from now on | **This file**, under "Traps worth remembering" |
+| True of one release only | `releases/<version>.md`, that release's own note |
+| True right now and about to change | `releases/UNRELEASED.md`, one dated line under "Open decisions" |
+| Already fixed in code | Nowhere. The commit is the record. |
+
+`UNRELEASED.md` is read before every ship, so it is the file that must stay
+short. It has one job: what is queued, and what is live. The workspace doctor
+fails it when the prose around its tables grows past the limit, because the
+default outcome otherwise is that every lesson gets pasted there and nobody
+can find the queue any more.
+
+## Traps worth remembering
+
+Append here when a release goes sideways for a reason that will recur. One
+bullet, the rule first and the evidence after, so the list stays scannable.
+These are the ones that cost most workspaces a step at least once:
+
+- **A store that has published a marketing version closes it to new builds.**
+  Once `X.Y.Z` is live, no further build of `X.Y.Z` is accepted however high
+  the build number goes. The marketing bump is a separate commit on the trunk
+  and must land before the cut; `release cut` bumps the build only.
+- **Approved is not live.** A review can pass and leave the build waiting on a
+  human to press Release. Read the state string the store reports, never the
+  approval alone, and never mark a build live from a notification.
+- **A non-zero exit from the cut does not mean nothing shipped.** The upload
+  can succeed and a later bookkeeping step fail. Read the log upward for the
+  publish and upload lines before re-running anything: a blind re-run burns a
+  build number and uploads a duplicate.
+- **Confirm the patch base per target, every time.** Targets diverge silently
+  when one store is live and the other is still in review, and a patch cut
+  against the default base goes to a release that target is not running.
+- **A queued row is not necessarily shippable.** Rows are classified by whether
+  anything native changed, so a docs, CI or release-tooling commit is labelled
+  OTA and looks patchable while reaching no user. Cutting a patch from only
+  such rows publishes an empty patch and burns a patch number.

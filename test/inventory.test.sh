@@ -83,4 +83,31 @@ source "$KIT/lib/config.sh"; source "$KIT/lib/repos.sh"; source "$KIT/lib/invent
 ensure_unreleased
 grep -q 'merged into `main`' "$UNRELEASED_FILE" && t_ok "monorepo intro names its own trunk" || t_bad "monorepo intro names its own trunk" "main" "?"
 
+echo "The inventory's shape comes from the kit template, not a second copy"
+
+# The heredoc that used to live in ensure_unreleased is gone: what a workspace
+# that never ran `init` gets must be what `init` would have written, or the
+# file drifts from the tooling that parses it.
+make_multi "$TMP/tpl"; WORKSPACE_ROOT="$TMP/tpl"
+source "$KIT/lib/config.sh"; source "$KIT/lib/repos.sh"; source "$KIT/lib/inventory.sh"
+ensure_unreleased
+expected="$(sed -e 's/{{NAME}}/Demo/g' -e 's/{{TRUNK}}/develop/g' "$KIT/templates/releases/UNRELEASED.md")"
+is "seeded byte-for-byte from the template" "$expected" "$(cat "$UNRELEASED_FILE")"
+grep -qF '{{' "$UNRELEASED_FILE" && t_bad "no token left unsubstituted" "none" "$(grep -F '{{' "$UNRELEASED_FILE")" || t_ok "no token left unsubstituted"
+for m in 'STATE:START' 'STATE:END' 'ITEMS:START' 'ITEMS:END'; do
+  grep -qF "<!-- $m -->" "$UNRELEASED_FILE" && t_ok "carries the $m marker" || t_bad "$m marker" "present" "missing"
+done
+is "the template stays short enough for the doctor" "1" "$([ "$(wc -l < "$KIT/templates/releases/UNRELEASED.md")" -le 60 ] && echo 1 || echo 0)"
+
+echo "A workspace name is substituted literally"
+
+# Both characters below have bitten this codebase before: `&` is "the matched
+# text" to awk's gsub and to bash's patsub_replacement, and awk -v decodes
+# backslash escapes in what it is handed.
+make_multi "$TMP/amp"; WORKSPACE_ROOT="$TMP/amp"
+sed -i.bak '1s/.*/name: Pen \& Pad \\n Co/' "$TMP/amp/workspace.yml"
+source "$KIT/lib/config.sh"; source "$KIT/lib/repos.sh"; source "$KIT/lib/inventory.sh"
+ensure_unreleased
+is "an & and a backslash survive the heading" "# Unreleased — Pen & Pad \\n Co app" "$(head -1 "$UNRELEASED_FILE")"
+
 finish

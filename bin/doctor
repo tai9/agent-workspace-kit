@@ -2,8 +2,9 @@
 #
 # Reports workspace drift: rules files, agent config left out of version
 # control, hook wiring, CI coverage for repos with test suites, env keys
-# missing from their .env.example, stale branches and leftover worktrees,
-# loose documents at the workspace root, and trunk state relative to origin.
+# missing from their .env.example, an UNRELEASED.md that has grown from a
+# queue into a history file, stale branches and leftover worktrees, loose
+# documents at the workspace root, and trunk state relative to origin.
 # Read-only — never changes anything.
 #
 # Usage: doctor

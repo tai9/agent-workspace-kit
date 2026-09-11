@@ -1,6 +1,6 @@
 ---
 name: workspace-doctor
-description: Check the workspace for drift that stays invisible until it bites — a rules file that has grown into an encyclopedia, agent config hidden by gitignore, a missing AGENTS.md symlink, hooks not installed, env keys absent from .env.example, branches and worktrees already merged, a trunk out of step with origin. Use when the user asks whether the workspace is clean or tidy, before starting a release, after merging a batch of PRs, or when they type /workspace-doctor.
+description: Check the workspace for drift that stays invisible until it bites — a rules file that has grown into an encyclopedia, agent config hidden by gitignore, a missing AGENTS.md symlink, hooks not installed, env keys absent from .env.example, an unreleased inventory that has grown into a history file, branches and worktrees already merged, a trunk out of step with origin. Use when the user asks whether the workspace is clean or tidy, before starting a release, after merging a batch of PRs, or when they type /workspace-doctor.
 ---
 
 # workspace-doctor
