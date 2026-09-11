@@ -86,7 +86,10 @@ events swept before any total, zeros checked against the never-fired
 lists, small-N rates labeled hypothesis.
 
 **Phase 3 — walk the value chain.** Build the report's chain table
-(playbook §1). **Name the links you cannot measure** — a blind spot is
+(playbook §1). "Weakest" has two readings — report **both**: the link losing the
+most users absolutely and the link with the lowest pass-through rate;
+they differ more often than not and get different fixes.
+**Name the links you cannot measure** — a blind spot is
 a finding, usually a cheap one, often the most useful one. Split the
 weakest link at least once by segment (playbook §8) — a mediocre
 average is one healthy segment plus one broken one. Close with one

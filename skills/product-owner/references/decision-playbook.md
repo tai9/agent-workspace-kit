@@ -41,6 +41,15 @@ scale" is an argument against building now.
 
 ## Prioritization — sequencing the backlog
 
+Two refusal conditions before any scoring: **frameworks execute
+strategy, they don't create it** — if the strategy doc can't say what
+matters, no scoring model will, and the honest verdict is "strategy
+first"; and **don't fix what isn't broken** — re-prioritizing a backlog
+already being executed in a sane order is motion, not progress. Match
+the tool to the situation: rich comparable data → RICE-style scoring;
+speed over rigor → ICE; a genuinely strategic bet → argue from the
+strategy doc, a scoring table would only launder the judgment.
+
 Score candidates on three axes, then argue in prose (1–3 each, no fake
 precision — the argument is what matters):
 
@@ -113,6 +122,15 @@ flows wins.
 
 The default for a feature nobody uses is kill, not "leave it, it's
 harmless." Every shipped feature is permanent contract surface.
+
+## Anti-patterns — name the cost, not just the sin
+
+| Anti-pattern | What it costs | Correct approach |
+| --- | --- | --- |
+| Solution-first thinking | Solves the wrong problem confidently | Start from the user problem; make the proposer state it (business-analyst job 1 exists for this) |
+| Feature factory | Shipping velocity with no strategic compounding | Every GO traces to north star + ICP + moat, or it isn't a GO |
+| Everything urgent | No prioritization is a priority decision made badly | An ordered list that drops something, with the reason |
+| Framework laundering | A scoring table lending fake objectivity to a judgment call | Say "this is a strategy judgment" and argue it from the doc |
 
 ## Risk checklist — priced into every verdict
 

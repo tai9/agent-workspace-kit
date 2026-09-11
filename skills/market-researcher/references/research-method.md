@@ -58,9 +58,18 @@ deeply and the rest at a paragraph.
 9. **This product's market** — localized? local pricing? local-store
    review sentiment? If irrelevant to the ask, one line saying so.
 
+Give every torn-down app the same **fixed profile block** so teardowns
+stay comparable across engagements: positioning · core strengths ·
+weaknesses & gaps · business model + pricing structure (the structure,
+apart from price points) · threat/opportunity to this product. Classify
+it in its set: **leader / challenger / niche player**.
+
 Close with **learnings, not summary**: 3–7 numbered observations this
 product could act on, each with tier and a first-pass transferability
-note. Doc: `docs/research/<date>-teardown-<app>.md`.
+note — reading gaps through a **JTBD
+lens**: the differentiation opportunity is a user job competitors leave
+unsolved, not merely a feature they lack. End with a **watch list**: the
+2–4 developments at this app worth re-checking in 12–18 months. Doc: `docs/research/<date>-teardown-<app>.md`.
 
 ## Job 2 — Dimension benchmark
 

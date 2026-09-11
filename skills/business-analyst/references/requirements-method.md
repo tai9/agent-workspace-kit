@@ -22,8 +22,12 @@ Turn "we want X" into a problem statement worth solving. Five slots:
 
 Method: restate the ask as a problem; if it arrived as a solution, ask
 the stakeholder one question — "what is the problem behind this?" — and
-take what comes back. Check `docs/personas/prior-findings.md` before
-declaring a problem unexamined.
+take what comes back. When the problem needs sharpening, the discovery
+question bank (one at a time, only where evidence hasn't answered):
+**why now**, **impact if unsolved**, **how often it occurs**, and
+**success at 3/6/12 months** — three horizons expose whether the goal
+is a spike or a trajectory. Check `docs/personas/prior-findings.md`
+before declaring a problem unexamined.
 
 **Routing seam:** when the fuzzy goal is really "diagnose where the
 conversion/habit chain leaks and rank fixes", that diagnosis is
@@ -67,7 +71,13 @@ The doc, in order:
 4. **Acceptance criteria** — Given/When/Then per story (`US-1.1`…),
    covering the happy path, each error path, and boundary values.
    Testable means an observable outcome: a screen state, a table row, an
-   event, a response — never "works correctly".
+   event, a response — never "works correctly". Three mechanical lints:
+   **alignment** (each When maps to the story's "I want", each Then to
+   its "so that" — a Then serving no story outcome is scope creep);
+   **one scenario, one behaviour** (a happy path needing two When/Then
+   pairs is two stories — split the story, not the criterion); and
+   **"As a user" is banned** — the persona slot names a segment +
+   context or the story hasn't decided who it serves.
 5. **Non-functional requirements** — latency (state the percentile),
    poor/no-network behaviour, device floor, capacity/cost bounds. "No
    NFRs beyond house defaults" is a filled-in answer; silence is not.

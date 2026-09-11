@@ -62,6 +62,12 @@ Per limit, the questions that matter:
   prior-findings; this exact proposal has usually been examined.
 - What is server-enforced vs display-only? A limit only the UI knows
   about is a suggestion.
+- **Value sampling beats hard gating**: before recommending a tighter
+  limit, name the alternative — intersperse tastes of paid value into
+  the free flow (the Grammarly pattern) so users learn what they'd pay
+  for by using it, not from a lock screen. And keep the model straight:
+  **free is an acquisition strategy, not a monetization strategy** —
+  the free tier is judged by the activated users it feeds the paywall.
 
 ## 4. Paywall timing
 
@@ -94,6 +100,16 @@ media):
   ledger for how much is given away vs sold.
 - Margin per paying user, at the real mix of plans, is the number every
   recommendation ultimately serves.
+
+Three pricing-structure checks before touching a price point: does the
+**value metric** scale with delivered value (the one pricing decision
+that matters most); is the debate at the right **order of magnitude**
+(never audit-argue small deltas while packaging is wrong); and is
+"underpricing" actually a **packaging failure** — too few tiers for the
+willingness-to-pay spread. Also compute the **churn ceiling**
+(`≈ new users per period ÷ churn rate`): current churn implies a maximum
+size no acquisition can beat, and if that ceiling is near, the audit's
+headline belongs to retention, not the paywall.
 
 ## 6. Content and supply — gap vs mismatch
 

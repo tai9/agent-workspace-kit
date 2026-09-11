@@ -72,11 +72,17 @@ A doc the implementing engineer wires without questions and
 
 ## 5. Funnel analysis
 
-Steps from events that **exist and fire** (inventory first — a funnel
-with a never-fired step is a job-9 finding). Per-user windowed funnels,
-never event-counting ones; state the window constant. Absolute users at
-every step alongside rates; biggest drop by users lost; split the
-biggest drop by one segment axis before concluding.
+State the scope first: **per-user or per-session**, and whether steps
+may span days — the most common funnel-definition bug. Steps from
+events that **exist and fire** (inventory first — a funnel with a
+never-fired step is a job-9 finding). Per-user windowed funnels, never
+event-counting ones; state the window constant. Absolute users at every
+step alongside rates, and name **both diagnosis targets**: the biggest
+leakage step (largest absolute users lost) and the weakest step (lowest
+step-to-step rate) — usually different steps, with different fixes.
+Drill into the worst step mechanically: compare the **segment
+composition** (platform, tier, entry path) of users who entered it
+against users who passed it before writing any hypothesis.
 
 ## 6. Retention & cohorts
 
@@ -84,7 +90,12 @@ Committed cohort queries first. Define day-bucketing explicitly.
 Cross-system cohorts: define in one system, carry the user-id list to
 the other. Feature-touched cohorts are self-selected — "correlated,
 self-selected", never the feature's effect. Show cohort sizes in every
-row; tag small ones.
+row; tag small ones. **Read curves, never points**: compare the
+retention curve across cohorts — sharp early drop with a low plateau =
+onboarding/first-value mismatch; a plateau that erodes = a habit or
+depth problem; newer cohorts above older = recent fixes working. And
+**never blend free and paid users in one retention number** — they
+churn for different reasons at different rates.
 
 ## 7. Segmentation
 
@@ -141,4 +152,7 @@ every tile filters test accounts, and every tile carries a description
 saying what it means *and how it lies* — a tile without its caveat is
 unfinished. Definitions come from metrics-catalog; a new definition
 created for a dashboard lands in the catalog in the same change. A
-one-off question is a query, not a dashboard.
+standing metric earns its tile only with a **decision rule** — threshold
+plus "if below X for <window>, then Y" — in the tile description; a
+number nobody would act on is decoration. (The same rule binds job 4's
+success metric.) A one-off question is a query, not a dashboard.
