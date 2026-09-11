@@ -204,6 +204,10 @@ another stack has a working starting point.
   the file — then does the asked job. They never edit product code, and
   they hand off to each other by name: analyst measures, owner decides,
   audit diagnoses money, BA writes requirements, researcher looks outward.
+  `skill-coach` maintains the layer: observed failure → classify (stale
+  knowledge / wrong method / unfollowed rule / not the skill) → smallest
+  fix at the right layer (knowledge directly; method with approval;
+  kit-owned method upstream) → verify → log in `docs/skill-lessons.md`.
 - **`contract-reviewer`** — an agent template that reads the contract table and
   reviews a PR against it. Shipped as a template because the table is
   project-specific; `init` writes an empty table for it.

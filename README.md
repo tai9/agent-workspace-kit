@@ -85,6 +85,14 @@ hand off to each other by name (analyst measures, owner decides, audit
 diagnoses, BA specifies, researcher looks outward) and none of them edits
 product code.
 
+A sixth skill, `skill-coach`, maintains the layer itself: when a skill
+gets something wrong, it classifies the failure (stale knowledge / wrong
+method / rule not followed / not the skill's fault), applies the smallest
+fix at the right layer — knowledge edits land directly in
+`docs/personas/`, method changes need approval and route upstream to the
+kit for kit-owned skills — and logs the lesson in
+`docs/skill-lessons.md`.
+
 ## The two shapes
 
 A workspace is either:
