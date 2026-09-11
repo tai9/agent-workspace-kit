@@ -42,9 +42,10 @@ As a Claude Code plugin, once the marketplace listing is public:
 /plugin marketplace add tai9/agent-workspace-kit
 ```
 
-That installs the `release`, `app-live` and `workspace-doctor` skills and the
-`contract-reviewer` agent template into the workspace; they call the same CLI
-under the hood, so plugin and CLI never drift apart.
+That installs the workflow skills (`release`, `app-live`,
+`workspace-doctor`), the `contract-reviewer` agent template, and the five
+**persona skills** (below); the workflow skills call the same CLI under the
+hood, so plugin and CLI never drift apart.
 
 ## Commands
 
@@ -67,6 +68,30 @@ run from the workspace root:
 
 `live` and `release cut` change nothing unless told to: no flags means a
 report only.
+
+## Persona skills
+
+Five product-role skills ship with the kit: `product-analyst` (measurement),
+`business-analyst` (requirements), `market-researcher` (competitors and
+benchmarks), `product-owner` (build/priority verdicts), `conversion-audit`
+(why-users-don't-pay diagnosis). Each carries only the *method* — jobs,
+disciplines, output shapes. What it knows about *your* product lives in
+`docs/personas/` at the workspace root, which `init` scaffolds as stubs
+(`templates/personas/`). A skill that finds its file still carrying the
+`ADOPT-ME` marker runs **adoption** first: it explores the workspace,
+interviews the owner, and fills the file — so the personas implement
+themselves for each consuming repo, incrementally, on first use. The five
+hand off to each other by name (analyst measures, owner decides, audit
+diagnoses, BA specifies, researcher looks outward) and none of them edits
+product code.
+
+A sixth skill, `skill-coach`, maintains the layer itself: when a skill
+gets something wrong, it classifies the failure (stale knowledge / wrong
+method / rule not followed / not the skill's fault), applies the smallest
+fix at the right layer — knowledge edits land directly in
+`docs/personas/`, method changes need approval and route upstream to the
+kit for kit-owned skills — and logs the lesson in
+`docs/skill-lessons.md`.
 
 ## The two shapes
 

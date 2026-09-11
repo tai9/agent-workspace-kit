@@ -22,6 +22,11 @@ printf '%s' "$out" | grep -q 'Shorebird is not initialised' && t_ok "warns about
 [ -f "$TMP/m/my-app/CLAUDE.md" ] && [ -L "$TMP/m/my-app/AGENTS.md" ] && t_ok "per-repo rules file in the anchor" || t_bad "per-repo rules" "CLAUDE.md + AGENTS.md symlink" "?"
 [ -f "$TMP/m/my-be/CLAUDE.md" ] && [ -L "$TMP/m/my-be/AGENTS.md" ] && t_ok "per-repo rules file in the service repo" || t_bad "per-repo rules be" "CLAUDE.md + AGENTS.md symlink" "?"
 [ -f "$TMP/m/docs/cross-repo-contracts.md" ] && t_ok "cross-repo-contracts.md copied into docs/" || t_bad "contracts doc" "file" "none"
+[ -f "$TMP/m/docs/personas/README.md" ] && t_ok "persona stubs scaffolded into docs/personas/" || t_bad "persona stubs" "docs/personas/README.md" "none"
+n_stubs=$(find "$KIT/templates/personas" -type f | wc -l | tr -d ' ')
+n_copied=$(find "$TMP/m/docs/personas" -type f | wc -l | tr -d ' ')
+is "every persona stub copied" "$n_stubs" "$n_copied"
+grep -q 'ADOPT-ME' "$TMP/m/docs/personas/data-access.md" && t_ok "stubs carry the ADOPT-ME marker" || t_bad "ADOPT-ME marker" "present" "missing"
 out="$(cd "$TMP/m" && WORKSPACE_ROOT="$TMP/m" bash "$KIT/bin/doctor" 2>&1 | strip_ansi)"
 printf '%s' "$out" | grep -q 'FAIL' && t_bad "doctor has no FAIL after init" "0 fail" "$(printf '%s' "$out" | grep FAIL)" || t_ok "doctor has no FAIL after init"
 
