@@ -10,24 +10,37 @@ ITEMS_START="<!-- ITEMS:START -->"
 ITEMS_END="<!-- ITEMS:END -->"
 
 # --- UNRELEASED.md inventory -------------------------------------------------
+# Seeded from the kit's own templates/releases/UNRELEASED.md, the single place
+# the file's shape is defined: `init` writes that template for a new workspace
+# and this writes the same bytes for a workspace that never ran `init`. The two
+# used to carry separate copies, which is exactly how a heading drifts from the
+# thing that parses it.
+#
+# Tokens are substituted by literal concatenation in awk, not gsub: a `&` in
+# the replacement is the matched text to gsub, so a workspace named "Pen & Pad"
+# would corrupt its own heading. The values arrive through the environment
+# rather than -v, which pre-decodes backslash escapes in what it is given.
+subst_tokens() {
+  AWK_NAME="$1" AWK_TRUNK="$2" awk '
+    BEGIN { name = ENVIRON["AWK_NAME"]; trunk = ENVIRON["AWK_TRUNK"] }
+    function lit(line, tok, val,   out, rest, i, n) {
+      n = length(tok); out = ""; rest = line
+      while ((i = index(rest, tok)) > 0) {
+        out = out substr(rest, 1, i - 1) val
+        rest = substr(rest, i + n)
+      }
+      return out rest
+    }
+    { line = lit($0, "{{NAME}}", name); print lit(line, "{{TRUNK}}", trunk) }
+  '
+}
+
 ensure_unreleased() {
   [[ -f "$UNRELEASED_FILE" ]] && return 0
   mkdir -p "$RELEASES_DIR"
-  cat > "$UNRELEASED_FILE" <<EOF
-# Unreleased — $(cfg_default name Workspace) app
-
-Items merged into \`$(anchor_trunk)\` but not yet shipped. \`/release add\` appends a row
-here on each squash-merge; \`/release cut\` moves the picked rows out into a
-versioned store note (\`<version>.md\`) or a patch note
-(\`<live-version>.patchN.md\`). See \`RELEASE_PROCESS.md\`.
-
-_Last updated: never_
-
-| # | Channel | Type | Summary | App commit | BE commit | Coupled |
-| - | ------- | ---- | ------- | ---------- | --------- | ------- |
-$ITEMS_START
-$ITEMS_END
-EOF
+  local tpl="$KIT_ROOT/templates/releases/UNRELEASED.md"
+  [[ -f "$tpl" ]] || die "missing inventory template: $tpl"
+  subst_tokens "$(cfg_default name Workspace)" "$(anchor_trunk)" < "$tpl" > "$UNRELEASED_FILE"
 }
 
 # Print the raw item rows (between the markers), excluding the markers.

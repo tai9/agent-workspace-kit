@@ -253,6 +253,42 @@ doctor_trunk_state() {
   done < <(doctor_targets)
 }
 
+# ── the unreleased inventory ──────────────────────────────────────────────────
+# UNRELEASED.md is read before every ship, so its value is inversely
+# proportional to its length. Left ungoverned it silently becomes the place
+# every hard-won lesson gets pasted: the origin workspace's copy reached 196
+# lines carrying a single queued row, so finding out what was about to ship
+# meant reading 190 lines of history first. The durable lessons belong in
+# RELEASE_PROCESS.md and the per-release facts in that release's own note;
+# what is left here is the two tables and a few lines around them.
+#
+# Only the prose is measured. The tables are delimited by markers and may grow
+# to any size — a hundred queued items is a big queue, not drift.
+doctor_inventory() {
+  dr_head "Unreleased inventory"
+  local limit total inside prose m
+  limit="$(cfg_default release.unreleased_prose_limit 60)"
+  case "$limit" in ''|*[!0-9]*) limit=60 ;; esac
+  if [ ! -f "$UNRELEASED_FILE" ]; then
+    dr_warn "releases/UNRELEASED.md — not created yet (\`release add\` writes it)"
+    return 0
+  fi
+  for m in "$ITEMS_START" "$ITEMS_END"; do
+    grep -qF "$m" "$UNRELEASED_FILE" || { dr_fail "releases/UNRELEASED.md — missing the $m marker; release add/cut cannot find the table"; return 0; }
+  done
+  total=$(wc -l < "$UNRELEASED_FILE" | tr -d ' ')
+  # Everything between a START and its END, markers included, is machine-owned.
+  inside=$(awk '/<!-- [A-Z]+:START -->/ {f=1} f {n++} /<!-- [A-Z]+:END -->/ {f=0} END {print n+0}' "$UNRELEASED_FILE")
+  prose=$((total - inside))
+  if [ "$prose" -le "$limit" ]; then
+    dr_pass "releases/UNRELEASED.md — $prose lines of prose (limit $limit)"
+  elif [ "$prose" -le $((limit * 2)) ]; then
+    dr_warn "releases/UNRELEASED.md — $prose lines of prose, over the $limit-line limit; move durable rules to RELEASE_PROCESS.md and per-release facts to the release note"
+  else
+    dr_fail "releases/UNRELEASED.md — $prose lines of prose, more than twice the $limit-line limit; it is a history file now, not a queue"
+  fi
+}
+
 doctor_run() {
   # Run under +e in a subshell: these checks are meant to fail sometimes and
   # keep going, the way the original script's non -e "set -uo pipefail" did.
@@ -264,6 +300,7 @@ doctor_run() {
     doctor_hooks
     doctor_ci
     doctor_env
+    doctor_inventory
     doctor_branches
     [ "$(shape)" = monorepo ] || doctor_root
     doctor_trunk_state

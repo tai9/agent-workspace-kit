@@ -240,4 +240,68 @@ printf '%s' "$out" | grep -q 'predates the guard stub' \
 printf '%s' "$out" | grep -q 'ok   my-app — workspace guards stub in place and registered' \
   && t_ok "regression: stub check still passes under a symlinked root" || t_bad "regression symlink" "ok   my-app — workspace guards stub in place and registered" "$out"
 
+echo "unreleased inventory: the prose limit"
+
+# Writes an inventory carrying $1 lines of prose around the two marker blocks,
+# and a 40-row queue, so the assertions below prove the queue is NOT counted.
+write_inv() {
+  local dir="$1" prose="$2" i
+  mkdir -p "$dir/releases"
+  {
+    printf '# Unreleased — Demo app\n\n'
+    for ((i = 3; i <= prose; i++)); do printf 'prose line %d\n' "$i"; done
+    printf '<!-- STATE:START -->\n'
+    for ((i = 0; i < 20; i++)); do printf '| t | b | o | d |\n'; done
+    printf '<!-- STATE:END -->\n<!-- ITEMS:START -->\n'
+    for ((i = 1; i <= 40; i++)); do printf '| %d | OTA | fix | s | `abc` | — | no |\n' "$i"; done
+    printf '<!-- ITEMS:END -->\n'
+  } > "$dir/releases/UNRELEASED.md"
+}
+
+# A workspace with nothing else wrong, so the exit code below reflects only
+# the inventory check.
+make_multi "$TMP/inv"; export WORKSPACE_ROOT="$TMP/inv"
+for r in my-app my-be; do
+  printf '# rules\n' > "$TMP/inv/$r/CLAUDE.md"; ln -s CLAUDE.md "$TMP/inv/$r/AGENTS.md"
+  mkdir -p "$TMP/inv/$r/.claude/hooks"; cp "$KIT/hooks/workspace-guards.stub.sh" "$TMP/inv/$r/.claude/hooks/workspace-guards.sh"
+  printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"$CLAUDE_PROJECT_DIR/.claude/hooks/workspace-guards.sh"}]}]}}' > "$TMP/inv/$r/.claude/settings.json"
+done
+mkdir -p "$TMP/inv/.claude"; cp "$TMP/inv/my-app/.claude/settings.json" "$TMP/inv/.claude/settings.json"
+write_inv "$TMP/inv" 20
+out="$(run)"; rc=$?
+is "the workspace is otherwise clean" "0" "$rc"
+out="$(run)"
+printf '%s' "$out" | grep -q 'ok   releases/UNRELEASED.md — 20 lines of prose (limit 60)' \
+  && t_ok "a short inventory passes, and its 62 marker lines do not count" \
+  || t_bad "short inventory" "ok … 20 lines of prose (limit 60)" "$out"
+
+write_inv "$TMP/inv" 80
+out="$(run)"
+printf '%s' "$out" | grep -q 'warn releases/UNRELEASED.md — 80 lines of prose, over the 60-line limit' \
+  && t_ok "prose past the limit warns" || t_bad "warn" "warn … 80 lines" "$out"
+out="$(run)"; rc=$?; is "a warn alone does not fail the doctor" "0" "$rc"
+
+write_inv "$TMP/inv" 200
+out="$(run)"; rc=$?
+printf '%s' "$out" | grep -q 'FAIL releases/UNRELEASED.md — 200 lines of prose, more than twice' \
+  && t_ok "prose past twice the limit fails" || t_bad "fail" "FAIL … 200 lines" "$out"
+is "and the failure is reported in the exit code" "1" "$rc"
+
+# The limit is the workspace's to set.
+printf '  unreleased_prose_limit: 300\n' >> "$TMP/inv/workspace.yml"
+out="$(run)"
+printf '%s' "$out" | grep -q 'ok   releases/UNRELEASED.md — 200 lines of prose (limit 300)' \
+  && t_ok "a workspace can raise the limit" || t_bad "configurable limit" "limit 300" "$out"
+
+# A missing marker is worse than long prose: add/cut cannot find the table.
+sed -i.bak 's/<!-- ITEMS:END -->//' "$TMP/inv/releases/UNRELEASED.md"
+out="$(run)"
+printf '%s' "$out" | grep -q 'FAIL releases/UNRELEASED.md — missing the <!-- ITEMS:END --> marker' \
+  && t_ok "a lost table marker fails" || t_bad "marker" "FAIL … missing the marker" "$out"
+
+rm -rf "${TMP:?}/inv/releases"
+out="$(run)"
+printf '%s' "$out" | grep -q 'warn releases/UNRELEASED.md — not created yet' \
+  && t_ok "a workspace that has not shipped yet only warns" || t_bad "absent inventory" "warn" "$out"
+
 finish

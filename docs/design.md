@@ -113,6 +113,7 @@ release:
   contract_paths:               # touching these warns about cross-repo coupling
     - lib/core/services/api_service
     - lib/core/services/app_version_service
+  unreleased_prose_limit: 60    # doctor: max prose lines around UNRELEASED.md's tables
 
 contracts:                       # optional; cross-repo pairs contract-check reports on
   - name: referral
