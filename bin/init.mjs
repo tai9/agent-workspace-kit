@@ -367,6 +367,13 @@ async function main() {
   planWrite('releases/_TEMPLATE.patch.md', fs.readFileSync(path.join(KIT, 'templates', 'releases', '_TEMPLATE.patch.md'), 'utf8'));
   planWrite('docs/cross-repo-contracts.md', fs.readFileSync(path.join(KIT, 'templates', 'cross-repo-contracts.md'), 'utf8'));
 
+  // -- persona reference stubs -----------------------------------------------
+  // Workspace-owned knowledge the persona skills read (and fill during
+  // adoption). Stubs carry an ADOPT-ME marker; planWrite never overwrites.
+  for (const f of fs.readdirSync(path.join(KIT, 'templates', 'personas')).sort()) {
+    planWrite(path.posix.join('docs/personas', f), fs.readFileSync(path.join(KIT, 'templates', 'personas', f), 'utf8'));
+  }
+
   // -- rules files: workspace root -------------------------------------------
   const rootClaude = path.join(ROOT, 'CLAUDE.md');
   const rootAgents = path.join(ROOT, 'AGENTS.md');

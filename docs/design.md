@@ -60,7 +60,8 @@ So the tooling does not need rewriting. Six constants need to move outward.
 
 ```
 .claude-plugin/plugin.json    plugin manifest
-skills/                       release, app-live, workspace-doctor
+skills/                       release, app-live, workspace-doctor,
+                              and the five persona skills
 agents/                       contract-reviewer (template)
 hooks/                        guard-release, guard-pr-contract, doctor-on-start,
                               workspace-guards.stub (multi-repo relay)
@@ -194,6 +195,15 @@ another stack has a working starting point.
   (stripping `/.claude/worktrees/*`) to the workspace's hooks and printing the
   first decision. Needed because Claude Code loads hooks only from the directory
   a session is opened in.
+- **Persona skills** — `product-analyst`, `business-analyst`,
+  `market-researcher`, `product-owner`, `conversion-audit`. Method-only:
+  each reads its workspace-specific knowledge from `docs/personas/` (stubs
+  scaffolded by `init` from `templates/personas/`, each carrying an
+  `ADOPT-ME` marker). A skill that finds its file missing or still marked
+  runs adoption first — explore the workspace, interview the owner, fill
+  the file — then does the asked job. They never edit product code, and
+  they hand off to each other by name: analyst measures, owner decides,
+  audit diagnoses money, BA writes requirements, researcher looks outward.
 - **`contract-reviewer`** — an agent template that reads the contract table and
   reviews a PR against it. Shipped as a template because the table is
   project-specific; `init` writes an empty table for it.
