@@ -12,11 +12,18 @@ traces to an observed failure, lands at the right layer, and is the
 smallest change that prevents recurrence.** A skill that grows a rule
 per incident dies of bloat; a skill that never learns repeats itself.
 
-**Scope: every skill the workspace runs** — the five personas, the
-kit's workflow skills (release, app-live, workspace-doctor), any local
-skills, and this skill itself. For creating *new* skills, use a
-skill-authoring workflow (e.g. superpowers:writing-skills where
-installed); this skill is incremental maintenance of skills that exist.
+**Scope: every skill in `.claude/skills/`** — personas, workflow
+skills, and this skill itself (no list here on purpose: a hardcoded
+roster is exactly the stale fact this skill exists to prevent). For
+creating *new* skills, hand over to a skill-authoring
+workflow (e.g. superpowers:writing-skills where installed); this skill
+is incremental maintenance of skills that exist.
+
+**Layers are defined by content, never by file location.** Knowledge =
+dated facts about the product, market, or data (wherever they live —
+`references/` or `docs/personas/`). Method = process, output shapes,
+rules, routing (wherever they live — a rule inside a references file is
+still method). The authority split below follows the content.
 
 ## The core move: classify before touching anything
 
@@ -28,8 +35,8 @@ file the real bug doesn't live in.
 | --- | --- | --- |
 | **Stale/wrong knowledge** | A fact a reference file carries was wrong: a price, a metric source, a competitor claim, a flow detail | Edit the knowledge file (`references/` or `docs/personas/`), dated. **Apply directly, no approval needed** |
 | **Wrong method** | The skill's process itself misled: a playbook missing a step, an output shape missing a slot, a wrong quality bar, a bad routing seam in the description | Edit SKILL.md/portable references. **Show the diff, get approval first** — method shapes every future run |
-| **Right rule, not followed** | The rule exists and the run violated it anyway | Do NOT add a rule (it's there). Strengthen enforcement: a red-flag entry, a rationalization-table row, moving the rule to where it's read at the moment of violation. Method-layer ⇒ approval |
-| **Not the skill's fault** | One-off circumstance; a user preference; the task was outside the skill's scope | No skill edit. Preference → CLAUDE.md or memory; scope gap → maybe a description edit (method-layer); one-off → record in the log only, or nothing |
+| **Right rule, not followed** | The rule exists and the run violated it anyway | Do NOT add a rule (it's there). Strengthen enforcement: a red-flag entry, a rationalization-table row, moving the rule to where it's read at the moment of violation. All of these are method edits ⇒ approval |
+| **Not the skill's fault** | One-off circumstance; a user preference; the task was outside the skill's scope | No skill edit. Preference → CLAUDE.md or memory; scope gap → maybe a description edit (method-layer); one-off → memory or a log line, or nothing. Exception: a "preference" that is really a standing output contract across skills (e.g. report language) goes to CLAUDE.md **and** any skill template now contradicting it gets reconciled — as method edits, with approval, citing CLAUDE.md |
 
 When a failure is genuinely two types (a stale fact *and* a missing
 verify step), fix both — as two labeled changes, not one blurred one.
@@ -43,30 +50,44 @@ verify step), fix both — as two labeled changes, not one blurred one.
    `superpowers:writing-skills`' full loop or doesn't go.
 2. **Classify** with the table above, and say the classification out
    loud before editing.
-3. **Locate the layer and the owner.**
-   - Knowledge layer: the skill's `references/` file or `docs/personas/`
-     — workspace-owned, edit here, done.
-   - Method layer, workspace-owned skill: edit here.
-   - Method layer, **kit-owned skill** (one this workspace consumes
-     from the kit rather than owning — its files live under
-     the installed plugin/package, not the workspace): record the lesson
-     in the log, apply any possible local mitigation at the knowledge
-     layer (`docs/personas/` is always workspace-owned and editable),
-     and raise the method fix upstream (kit issue/PR) — patching a
-     consumer's copy forks it from the kit silently.
+3. **Locate the layer (by content) and the owner.**
+   - Knowledge: edit the workspace-owned file, done.
+   - Method, workspace-owned skill: edit here. If the skill has a
+     **generic twin in the kit**, the same lesson usually
+     applies there — mirror it upstream (courtesy PR) or record a
+     divergence note in the log; a silent fork is the failure either
+     way.
+   - Method, **kit-owned skill** (consumed from the kit, files under
+     the installed package — not editable here): record the lesson in
+     the log, mitigate locally at the knowledge layer if possible
+     (`docs/personas/` is always workspace-owned), and raise the fix
+     upstream (kit issue/PR).
 4. **Write the smallest edit that prevents recurrence**, with the form
    matched to the failure (see below). Check for an existing rule
    first — grep the skill for the topic; duplicating a rule in new
-   words is bloat, and contradicting one is a bug.
-5. **Verify.** Re-run the failing moment on paper: give a subagent the
-   edited skill plus the original scenario and confirm it now behaves
-   correctly — the miniature RED→GREEN. For a one-line dated-fact fix,
-   re-reading the edit suffices; for a method change, the subagent check
-   is the approval evidence you show.
+   words is bloat, and contradicting one is a bug. Knowledge fixes
+   carry three extra duties:
+   - **Verify the new fact live before writing it** — replacing one
+     unchecked number with another is not a fix.
+   - **Prefer a lookup over a value** for volatile facts (prices,
+     limits, config): "query the live price table" cannot go stale; a copied number
+     will go stale. Write the value only when a lookup is impractical, and date
+     it inline: `(as of YYYY-MM-DD, <source>)`.
+   - **Grep the sibling skills** for the same fact — stale knowledge
+     rarely lives in one file.
+5. **Verify.** For a method change, draft the edit as a *proposed
+   diff* (scratch copy), give a subagent the drafted skill plus the
+   original failing scenario, confirm it now behaves correctly — the
+   miniature RED→GREEN — and present that result *with* the diff as
+   the approval evidence; apply only on yes. For a dated-fact fix,
+   re-reading the edit suffices.
 6. **Log it.** One line in `docs/skill-lessons.md` (create if absent):
-   `<date> · <skill> · <layer> · <what changed> · <the incident>`. The
-   log is why future maintainers can tell a load-bearing rule from a
-   scar that can fade.
+   `<date> · <skill> · <layer> · <what changed> · <the incident>` —
+   and for a method edit, the one-line gist of what it replaced, so a
+   bad coaching edit can be traced and reverted. The log is why future
+   maintainers can tell a load-bearing rule from a scar that can fade;
+   when working in it, prune entries whose rule has since been removed
+   or superseded.
 
 ## Form follows failure
 
