@@ -26,6 +26,18 @@ for stub in "$KIT"/templates/personas/*.md; do
   head -1 "$stub" | grep -q 'ADOPT-ME' && t_ok "$base: marker on line 1" || t_bad "$base marker" "ADOPT-ME first line" "$(head -1 "$stub")"
 done
 
+# Every routed skill carries fixed retrieval probes, so a description edit
+# has a suite to rerun instead of a one-off judgment call.
+for pskill in $PERSONAS skill-coach; do
+  r="$KIT/skills/$pskill/retrieval-samples.md"
+  if [ ! -f "$r" ]; then t_bad "$pskill retrieval samples" "$r" "missing"; continue; fi
+  grep -q '^## Must route here' "$r" && grep -q '^## Must NOT route here' "$r" \
+    && t_ok "$pskill: retrieval samples have both sections" \
+    || t_bad "$pskill retrieval sections" "Must route here + Must NOT route here" "$(grep -c '^## ' "$r") section(s)"
+  grep -q '” → \|" → ' "$r" && t_ok "$pskill: rejection probes name their target" \
+    || t_bad "$pskill rejection targets" 'a "…" → <skill> line' "none"
+done
+
 # Every docs/personas/<file> a skill names must exist as a template stub, so
 # adoption always has a scaffold to fill.
 while IFS= read -r ref; do
