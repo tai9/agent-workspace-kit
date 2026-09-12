@@ -196,14 +196,16 @@ another stack has a working starting point.
   first decision. Needed because Claude Code loads hooks only from the directory
   a session is opened in.
 - **Persona skills** — `product-analyst`, `business-analyst`,
-  `market-researcher`, `product-owner`, `conversion-audit`. Method-only:
+  `market-researcher`, `product-owner`, `conversion-audit`,
+  `qa-engineer`. Method-only:
   each reads its workspace-specific knowledge from `docs/personas/` (stubs
   scaffolded by `init` from `templates/personas/`, each carrying an
   `ADOPT-ME` marker). A skill that finds its file missing or still marked
   runs adoption first — explore the workspace, interview the owner, fill
   the file — then does the asked job. They never edit product code, and
   they hand off to each other by name: analyst measures, owner decides,
-  audit diagnoses money, BA writes requirements, researcher looks outward.
+  audit diagnoses money, BA writes requirements, researcher looks
+  outward, QA verifies builds against AC and reports risk.
   `skill-coach` maintains the layer: observed failure → classify (stale
   knowledge / wrong method / unfollowed rule / not the skill) → smallest
   fix at the right layer (knowledge directly; method with approval;
