@@ -289,6 +289,33 @@ doctor_inventory() {
   fi
 }
 
+# ── kit skills linked ─────────────────────────────────────────────────────────
+# A kit skill reaches a session only through .claude/skills/ at the workspace
+# root — a symlink per skill, or a workspace-owned fork under the same name.
+# Package updates bring new kit skills and remove deleted ones, but nothing
+# creates or removes the links, so the drift is silent: a new skill never
+# loads, a deleted one leaves a dead link. A skill this workspace deliberately
+# does not consume (or consumes as a fork under a different name) is declared
+# in workspace.yml under skills.unlinked_ok.
+doctor_skills() {
+  dr_head "Kit skills linked"
+  local sk="$WORKSPACE_ROOT/.claude/skills" d name entry ignore
+  ignore=" $(cfg_default skills.unlinked_ok "") $(cfg_list skills.unlinked_ok | tr '\n' ' ') "
+  for d in "$KIT_ROOT"/skills/*/; do
+    [ -f "${d}SKILL.md" ] || continue
+    name="$(basename "$d")"
+    case "$ignore" in *" $name "*) dr_pass "$name — unlinked on purpose (skills.unlinked_ok)"; continue;; esac
+    if [ -L "$sk/$name" ]; then dr_pass "$name — linked"
+    elif [ -e "$sk/$name" ]; then dr_pass "$name — workspace owns its own copy"
+    else dr_warn "$name — kit skill not in .claude/skills/; symlink it, or declare it under skills.unlinked_ok in workspace.yml"
+    fi
+  done
+  for entry in "$sk"/*; do
+    [ -L "$entry" ] || continue
+    [ -e "$entry" ] || dr_fail "$(basename "$entry") — dead symlink in .claude/skills/ (target gone; relink or remove it)"
+  done
+}
+
 doctor_run() {
   # Run under +e in a subshell: these checks are meant to fail sometimes and
   # keep going, the way the original script's non -e "set -uo pipefail" did.
@@ -298,6 +325,7 @@ doctor_run() {
     doctor_rules
     doctor_agent_config
     doctor_hooks
+    doctor_skills
     doctor_ci
     doctor_env
     doctor_inventory

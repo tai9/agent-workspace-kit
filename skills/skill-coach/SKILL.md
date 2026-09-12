@@ -80,7 +80,14 @@ verify step), fix both — as two labeled changes, not one blurred one.
    original failing scenario, confirm it now behaves correctly — the
    miniature RED→GREEN — and present that result *with* the diff as
    the approval evidence; apply only on yes. For a dated-fact fix,
-   re-reading the edit suffices.
+   re-reading the edit suffices. **An edit that touches a skill's
+   frontmatter `description` additionally reruns that skill's
+   `retrieval-samples.md`** (the fixed probes next to its SKILL.md):
+   a subagent sees only the descriptions of every installed skill plus
+   each probe, and every probe must still route as the file says. A
+   failed probe blocks the edit; if the scope legitimately moved,
+   update the samples in the same edit — and a skill with no samples
+   file gets one as part of the change.
 6. **Log it.** One line in `docs/skill-lessons.md` (create if absent):
    `<date> · <skill> · <layer> · <what changed> · <the incident>` —
    and for a method edit, the one-line gist of what it replaced, so a
