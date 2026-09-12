@@ -132,6 +132,9 @@ the verdict table and the bug headlines, not the whole doc.
   pre-existing-failures list in `docs/personas/test-surface.md` — and a
   pre-existing failure quietly absorbed into that list without verifying
   it is the *same* failure.
+- A green run whose **test count** was never checked — a filtered or
+  misconfigured run reports zero failures because zero tests executed;
+  verify the count in the runner output, not just the exit status.
 - "Works on the emulator" generalized to devices for anything touching
   audio, permissions, push, or purchases.
 - A severity assigned by how loud the reporter was, not by the ladder.
