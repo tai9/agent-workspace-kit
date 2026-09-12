@@ -15,9 +15,17 @@ per incident dies of bloat; a skill that never learns repeats itself.
 **Scope: every skill in `.claude/skills/`** — personas, workflow
 skills, and this skill itself (no list here on purpose: a hardcoded
 roster is exactly the stale fact this skill exists to prevent). For
-creating *new* skills, hand over to a skill-authoring
-workflow (e.g. superpowers:writing-skills where installed); this skill
-is incremental maintenance of skills that exist.
+creating *new* skills, hand over to a skill-authoring workflow (e.g.
+superpowers:writing-skills where installed) — with one standing
+requirement passed along: **every new skill's build includes an
+ecosystem survey** (via a skill-discovery tool such as `find-skills`,
+where installed) before it is committed — search the published-skill
+ecosystem for skills covering the same job, study the top matches, and
+fold in what they do better (owner-approved for method content, as
+usual). Record the survey's yield — or "nothing better found" — in
+`docs/skill-lessons.md`; a skill built without the survey owes it
+retroactively. This skill remains incremental maintenance of skills
+that exist.
 
 **Layers are defined by content, never by file location.** Knowledge =
 dated facts about the product, market, or data (wherever they live —

@@ -18,7 +18,8 @@ And records:
   credentials live — a gitignored env file, never values in this doc).
 - **Suite landmines** — pre-existing failures that are not regressions
   (named, so a red run can be read), flaky tests, mock-only coverage
-  areas, tooling traps.
+  areas, tooling traps (e.g. a filtered run that executes zero tests
+  still exits 0 — check the test count, not just the status).
 - **Emulator/device divergence** — what the emulator cannot genuinely
   test (sensors, native dialogs, purchases, push), so the human/agent
   split has a factual basis.

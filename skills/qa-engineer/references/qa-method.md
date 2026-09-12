@@ -65,19 +65,35 @@ Not covered: <named blind spots and why>
    reconstruct the AC yourself, and mark every one **reconstructed — not
    approved**; reconstructed AC the stakeholder later corrects are
    cheap, silently-assumed behaviour is not.
-2. **Risk-rank before writing cases.** Depth follows risk, not story
-   order. Deepest first: money/entitlement correctness → cross-repo
-   contracts → the product's core loop → data written to user state →
-   presentation. A cosmetic story gets one case; a grant/charge path
-   gets its boundaries, its idempotency, and its failure modes.
+2. **Risk-rank before writing cases.** Risk = impact × probability.
+   Impact order, deepest first: money/entitlement correctness →
+   cross-repo contracts → the product's core loop → data written to
+   user state → presentation. Probability has two observable signals:
+   **code churn** (`git log --since='3 months ago' --name-only
+   --format= | sort | uniq -c | sort -rn | head -20` per touched repo —
+   files that change often break often) and the incident history in
+   `docs/personas/prior-findings.md`. A cosmetic story gets one case; a
+   grant/charge path gets its boundaries, its idempotency, and its
+   failure modes.
+
+   For each risk at the top of the rank, fill the **failure-mode
+   block**: *trigger* (what would set it off) · *blast radius* (who/what
+   is hit) · **detection method** (which alert, event, or reconciliation
+   would notice — "only a user complaint" on a money path is itself a
+   finding) · *current mitigation* · *gap*. The detection-method slot is
+   the one that catches the silent class.
 3. **Write cases with traceability.** `US-1.2 → TC-1.2a, TC-1.2b…`.
    Then run both audits: every AC has ≥1 case (a gap is a finding, not
    a silent omission), and every case points at an AC — or at a named
    risk ("TC-R1: double-claim idempotency, no AC covers it"), which is
    also a finding for the spec.
 4. **Case shape:** id · AC/risk it traces to · `[agent|human — reason]`
-   · preconditions · steps with per-step expected · covers which
-   boundary (happy / error / boundary value / concurrency).
+   · preconditions · **test data** (which account/tier/state — from
+   `docs/personas/test-surface.md`) · steps with per-step expected ·
+   covers which boundary (happy / error / boundary value /
+   concurrency) · **post-conditions** (what state the case leaves on
+   the dev environment and how to clean it, so runs don't contaminate
+   each other).
 5. **Run the `[agent]` cases now** — a plan whose runnable half is unrun
    is a draft. Attach results; failures become bug reports (job 3
    shape).
@@ -103,6 +119,11 @@ Derived from what changed, never copied from last time:
 5. Output: checklist grouped by [agent]/[human], summary table, and an
    explicit "not covered" list. Hand it over; **never proceed to any
    release tooling yourself**.
+6. **Near-misses train the model:** a real bug this checklist (or any
+   pre-release pass) catches means the risk ranking *underestimated
+   that area* — record it in `docs/personas/prior-findings.md` or the
+   engagement doc so the next checklist weights the area up, rather
+   than filing the catch as a pure win.
 
 ## Job 3 — Bug intake & repro
 
@@ -111,21 +132,34 @@ Derived from what changed, never copied from last time:
    rumor. (Check test-surface.md for version-specific traps — e.g.
    builds whose crash symbols were never uploaded.)
 2. **Hunt evidence before reproducing:** the error tracker and the
-   analytics trail around the reported time (`docs/personas/
-   data-access.md`). Evidence narrows the repro from "somewhere in the
-   product" to a branch.
-3. **Reproduce deliberately:** same environment/tier/state, on dev or
-   emulator. Distinguish and report honestly: **reproduced** (steps
-   below) / **not reproduced** (what was tried, what differed from the
+   analytics trail around the reported time
+   (`docs/personas/data-access.md`). Evidence narrows the repro from
+   "somewhere in the product" to a branch.
+3. **Reproduce deliberately, and bounded.** On the **exact reported
+   build and patch level** — where the platform hot-updates clients, a
+   store build and its patched sibling are different programs; never
+   silently substitute a newer build, and if forced to, record
+   reported-vs-tested versions and the reason. Same
+   environment/tier/state, on dev or emulator. Once the bug appears,
+   **stop changing variables** — the repro is the deliverable, not a
+   tour. If it doesn't appear, try at most **two targeted variations**
+   (each testing one named hypothesis) before reporting. Statuses,
+   honestly: **reproduced** (steps below) / **partially-reproduced** (a
+   related symptom, or only under a different coordinate — say which) /
+   **not reproduced** (what was tried, what differed from the
    reporter's coordinates) / **cannot attempt** (needs a `[human]`
    reason — then write the script). "Could not reproduce" is a status,
    not a dismissal — one user's crash with tracker evidence is real
    regardless.
-4. **Bug report shape:** title (symptom, not guess-at-cause) ·
-   coordinates · steps to reproduce · expected vs actual · evidence
-   links · severity · scope guess (how many users, via product-analyst
-   discipline if it matters) · suspected area (labeled hypothesis —
-   root-causing is the fixer's job; your leads are welcome but tagged).
+4. **Bug report shape:** title in the form `[Component] fails
+   [condition] causing [impact]` (symptom, not guess-at-cause) ·
+   coordinates · **since when** (first-bad build/deploy/patch and the
+   suspected change, from the tracker's first-seen + release tags — it
+   turns the symptom into a bisectable coordinate) · steps to
+   reproduce · expected vs actual · evidence links · severity · scope
+   guess (how many users, via product-analyst discipline if it
+   matters) · suspected area (labeled hypothesis — root-causing is the
+   fixer's job; your leads are welcome but tagged).
 5. **Severity ladder — consequence to the business, not reporter
    volume:**
    - **S1** — users lose money/entitlement they paid for, data loss,
@@ -142,15 +176,22 @@ Derived from what changed, never copied from last time:
    and can't be now, say so: verification below is then weak, and the
    report must carry that caveat instead of a clean "fixed".
 2. **Run the exact broken path** on the fixed build: same steps, same
-   coordinates. Pass *here* is what "fixed" means.
+   coordinates. Pass *here* is what "fixed" means. **When the fix was
+   written by an agent, reading the diff is not verification** — the
+   verifier shares the author's assumptions, and self-review has
+   reintroduced the same bug repeatedly; only an executed repro or
+   test counts.
 3. **Regress the neighbours:** whatever the fix touched, walk that
    flow's adjacent branches — fixes to shared code break the sibling
    branch, one level out from the change.
 4. **Ask "where should this have been caught?"** A bug a test should
    have stopped yields a companion finding ("missing test for X" —
-   name the suite and the case). A lesson about *method* (a class of
-   bug, not one bug) routes to `skill-coach` for the relevant skill's
-   references.
+   name the suite and the case). When that test gets written, it is
+   **named after the bug** (`bug_<id>_regression` or the ticket ref)
+   and must run **red on the pre-fix code, green on the fix** before
+   the finding counts as closed — a regression test that never failed
+   proves nothing. A lesson about *method* (a class of bug, not one
+   bug) routes to `skill-coach` for the relevant skill's references.
 5. Verdict: **verified-fixed / not-fixed / can't-verify (+ reason)**,
    with the neighbour regression list attached.
 
@@ -178,7 +219,29 @@ Structure the hunch, then hunt:
      build divergence, where the platform has both.
    - **Locale/content tour:** language switch mid-flow, glyph rendering
      for the product's scripts, empty/missing content states.
-3. Findings that are bugs get the job-3 shape; observations that are
+   - **Dual-path tour:** any behaviour with two code paths — env
+     branches, feature/flag gates, tier branches, preview/test
+     bypasses — gets the change verified on *both* paths; the
+     forgotten second path is the most common agent-introduced
+     regression.
+3. **Oracles — how to recognize a problem** (the tours say where to
+   look; these say what "wrong" looks like): *history* (did the last
+   release behave this way?), *claims* (spec, store listing, pricing
+   copy — the product must not contradict what it sells), *internal
+   consistency* (does this error state match the product's other error
+   states?), *world* (the user's locale, network conditions, device
+   habits). A mismatch against any oracle is a legitimate finding even
+   with no AC to point at.
+4. **Boundary idea bank** — high-yield probes for most products:
+   zero/one/many; any cap or quota ±1; max string length + non-ASCII
+   input in the product's languages; the day-boundary in the user's
+   timezone vs the server's; list page-size boundaries; double-submit
+   and rapid re-tap; the same account on two devices.
+5. **Log the session as it runs**, each entry tagged BUG / QUESTION /
+   IDEA / RISK / NOTE, and close with a debrief marking each charter
+   area **covered / partial / unexplored** — the per-session form of
+   the blind-spot mandate.
+6. Findings that are bugs get the job-3 shape; observations that are
    spec gaps route to business-analyst; "this felt wrong but works as
    specced" routes to product-owner as UX input, clearly labeled.
 
