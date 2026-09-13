@@ -16,6 +16,7 @@ skill's scope legitimately moved, update these samples in the same edit.
 - "do the client and server still agree on the API shape?"
 
 ## Must NOT route here
+- "does this screen look right?" → designer
 - "write the acceptance criteria for X" → business-analyst
 - "how is the feature doing two weeks post-ship?" → product-analyst
 - "is this feature worth shipping?" → product-owner

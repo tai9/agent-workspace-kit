@@ -61,7 +61,7 @@ So the tooling does not need rewriting. Six constants need to move outward.
 ```
 .claude-plugin/plugin.json    plugin manifest
 skills/                       release, app-live, workspace-doctor,
-                              and the five persona skills
+                              and the persona skills
 agents/                       contract-reviewer (template)
 hooks/                        guard-release, guard-pr-contract, doctor-on-start,
                               workspace-guards.stub (multi-repo relay)
@@ -197,7 +197,7 @@ another stack has a working starting point.
   a session is opened in.
 - **Persona skills** — `product-analyst`, `business-analyst`,
   `market-researcher`, `product-owner`, `conversion-audit`,
-  `qa-engineer`. Method-only:
+  `qa-engineer`, `designer`. Method-only:
   each reads its workspace-specific knowledge from `docs/personas/` (stubs
   scaffolded by `init` from `templates/personas/`, each carrying an
   `ADOPT-ME` marker). A skill that finds its file missing or still marked

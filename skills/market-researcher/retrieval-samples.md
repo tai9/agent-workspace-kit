@@ -12,8 +12,9 @@ skill's scope legitimately moved, update these samples in the same edit.
 - "tear down competitor X's product"
 - "how do competitors price their subscriptions?"
 - "scan the market for apps doing Y"
-- "what does competitor X's onboarding look like?"
+- "how does competitor X structure its onboarding funnel?"
 
 ## Must NOT route here
+- "what should our own onboarding screen look like?" → designer
 - "why don't our own users convert?" → conversion-audit
 - "should we copy competitor feature X?" → product-owner
