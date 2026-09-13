@@ -71,22 +71,22 @@ report only.
 
 ## Persona skills
 
-Six product-role skills ship with the kit: `product-analyst` (measurement),
+Seven product-role skills ship with the kit: `product-analyst` (measurement),
 `business-analyst` (requirements), `market-researcher` (competitors and
 benchmarks), `product-owner` (build/priority verdicts), `conversion-audit`
 (why-users-don't-pay diagnosis), `qa-engineer` (verification and risk
-information). Each carries only the *method* — jobs,
+information), `designer` (design specs, UX review, and visual QA). Each carries only the *method* — jobs,
 disciplines, output shapes. What it knows about *your* product lives in
 `docs/personas/` at the workspace root, which `init` scaffolds as stubs
 (`templates/personas/`). A skill that finds its file still carrying the
 `ADOPT-ME` marker runs **adoption** first: it explores the workspace,
 interviews the owner, and fills the file — so the personas implement
-themselves for each consuming repo, incrementally, on first use. The six
+themselves for each consuming repo, incrementally, on first use. The seven
 hand off to each other by name (analyst measures, owner decides, audit
-diagnoses, BA specifies, researcher looks outward, QA verifies) and none
-of them edits product code.
+diagnoses, BA specifies, researcher looks outward, QA verifies, designer
+specifies the surface) and none of them edits product code.
 
-A seventh skill, `skill-coach`, maintains the layer itself: when a skill
+An eighth skill, `skill-coach`, maintains the layer itself: when a skill
 gets something wrong, it classifies the failure (stale knowledge / wrong
 method / rule not followed / not the skill's fault), applies the smallest
 fix at the right layer — knowledge edits land directly in
