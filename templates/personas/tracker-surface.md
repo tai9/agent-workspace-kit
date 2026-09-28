@@ -11,32 +11,47 @@ Adoption fills:
 
 ## Auth
 
-The GitHub account is selected per directory by `.envrc` (direnv)
-exporting `GH_TOKEN`. The agent's shell is non-interactive, so direnv
-never fires there on its own: **every command runs as
-`direnv exec <workspace-root> gh …`**, and `gh auth status` must report
-the active account as coming from `GH_TOKEN`, not from the keyring.
+The account a command runs as is decided here, never by `gh`'s
+machine-global active login. Record the **auth prefix** every tracker
+command must carry — the agent's shell is non-interactive, so a bare
+`gh` runs as whatever the keyring holds. Two forms are known to work:
 
-Record: the **expected account login**, the variable name, where
-`.envrc` lives, and which scopes the token needs (`repo`, plus
-`project` for Projects v2 — `read:project` if this workspace only
-reads).
+```sh
+GH='direnv exec <workspace-root> gh'                      # .envrc decides the account
+GH='GH_TOKEN="$(gh auth token --user <login>)" gh'        # the token is named on the command
+```
+
+Record: which prefix this workspace uses and why, the **expected
+account login** (so `$GH auth status` can be checked against it),
+where `.envrc` lives if the first form is used, the SSH host alias if
+git uses one, and the scopes the token needs (`repo`, plus `project`
+for Projects v2 — `read:project` if this workspace only reads).
+
+Note any `PreToolUse` hook that enforces the prefix, so a denial is
+read as the guard working rather than as a broken command.
 
 **Never record a token value here.** `.envrc` belongs in `.gitignore`
 and this file is in version control. Widening a token's scope is the
 owner's action: `gh auth login/switch/logout/refresh` are never run by
-an agent, even when `gh` suggests it.
+an agent, even when `gh` suggests it — `gh auth switch` in particular
+rewrites machine-global state and breaks sessions in other repos.
 
-## Boards
+## Boards — or the absence of one
 
-The org, the project number(s), which is authoritative when there is
-more than one, and what each is for.
+**First: does this workspace use a Projects v2 board at all?** Many run
+on repo issues plus milestones and labels, which is a configuration to
+record, not a gap. Say so explicitly here, and name what carries status
+instead: which milestone, label, assignee or state means "active", and
+what the ordered backlog is read from.
+
+With a board: the org, the project number(s), which is authoritative
+when there is more than one, and what each is for.
 
 Board writes need node IDs. Capture them once, here:
 
 ```sh
-direnv exec "$WS" gh project view <n> --owner <org> --format json --jq .id      # project-id
-direnv exec "$WS" gh project field-list <n> --owner <org> -L 50 --format json   # field ids + option ids
+$GH project view <n> --owner <org> --format json --jq .id      # project-id
+$GH project field-list <n> --owner <org> -L 50 --format json   # field ids + option ids
 ```
 
 | Field | Field ID | Option | Option ID |
