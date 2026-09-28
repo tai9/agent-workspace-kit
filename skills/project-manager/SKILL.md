@@ -36,59 +36,71 @@ the workspace's normal build workflow.
 that matter span repos, and the cross-repo waits are the ones nobody
 is watching.
 
-## Tracker access — auth comes from the workspace, never from `gh`
+## Tracker access — auth belongs to the workspace, never to `gh`
 
-This workspace's owner keeps several GitHub accounts. The account is
-decided by which directory you stand in, through `.envrc` (direnv)
-exporting `GH_TOKEN` at the workspace root.
+An owner may keep several GitHub accounts, and the account a command
+runs as must be decided by the workspace, not by `gh`'s machine-global
+active login. **The agent's shell is non-interactive**, so direnv's
+hook never fires there and a bare `gh` silently runs as whatever the
+keyring says — a different account, with no error.
 
-**The agent's shell is non-interactive, so direnv's hook never fires and
-`GH_TOKEN` is unset there.** Left alone, `gh` would silently fall back
-to whatever login sits in its keyring — a different account, with no
-error. So every tracker command runs through direnv explicitly:
+So every tracker command carries an **auth prefix**, and which prefix
+this workspace uses is recorded in `docs/personas/tracker-surface.md`.
+Two forms are known to work; the file names one of them:
 
 ```sh
-WS="$(git rev-parse --show-toplevel)"   # or the workspace root from workspace.yml
-direnv exec "$WS" gh <args>
+# default — the workspace's .envrc decides the account
+GH='direnv exec <workspace-root> gh'
+
+# alternative — the token is named on the command itself
+GH='GH_TOKEN="$(gh auth token --user <login>)" gh'
 ```
 
-This is the same mechanism `bin/release-live` already uses for git, and
-it is not `gh auth`, so it stays inside the rule below.
+Every command in `references/delivery-method.md` is written `$GH …`
+and means "the prefix this workspace recorded". A workspace whose
+prefix is unrecorded gets adoption first — running a bare `gh` to find
+out is exactly the failure this rule exists to prevent.
 
 - **Never run** `gh auth login`, `gh auth switch`, `gh auth logout`, or
-  `gh auth refresh`. Switching accounts and granting scopes is the
-  owner's action, not yours. Never print a token value.
-- **Preflight, every engagement, before any read or write** — three
-  checks, in order:
-
-  1. `direnv exec "$WS" sh -c 'test -n "$GH_TOKEN"'` — the token
-     reaches the command at all. Empty → **stop**: the `.envrc` is
-     missing or direnv is not allowed here; say `direnv allow "$WS"`
-     and write nothing. Do not repair it with `gh auth`.
-  2. `direnv exec "$WS" gh auth status` — the active account must be
-     sourced from **`GH_TOKEN`**, not from the keyring, and its login
-     must match the expected account in
-     `docs/personas/tracker-surface.md`. Either wrong → **stop** and
-     report "authenticated as X from <source>, this workspace expects
-     Y from GH_TOKEN".
-  3. `direnv exec "$WS" gh project view <n> --owner <org> --format json --jq .id`
-     — the token can actually see the board. Projects v2 needs the
-     `project` scope (`read:project` to read only); a token that
-     authenticates fine can still be blind to the board.
-
+  `gh auth refresh`. Switching the active account rewrites machine-global
+  state and breaks sessions running in other repos; granting scopes is
+  the owner's call. Never print a token value.
 - **When `gh` tells you to run `gh auth refresh -s project`, do not.**
-  That is the token's scope in `.envrc`, and only the owner can widen
-  it. Report the missing scope and stop.
+  Report the missing scope and stop.
+- **Preflight, every engagement, before any read or write** — three
+  checks with the workspace's prefix:
 
-Everything else goes through `gh` normally, always via `direnv exec`:
-`gh issue list`, `gh issue view`, `gh issue edit`, `gh project
-item-list`, `gh project item-edit`, `gh pr list`, `gh search issues`.
+  1. The prefix yields a token at all — for the direnv form,
+     `direnv exec <root> sh -c 'test -n "$GH_TOKEN"'`. Empty → **stop**:
+     the `.envrc` is missing or direnv is not allowed here
+     (`direnv allow <root>`). Do not repair it with `gh auth`.
+  2. `$GH auth status` — the active account must match the expected
+     login in `tracker-surface.md`, and for the direnv form must be
+     sourced from `GH_TOKEN` rather than the keyring. Wrong → **stop**
+     and report "authenticated as X from <source>, this workspace
+     expects Y".
+  3. **Only where the workspace has a board** —
+     `$GH project view <n> --owner <org> --format json --jq .id`: the
+     token can actually see it. Projects v2 needs the `project` scope
+     (`read:project` to read only); a token that authenticates fine
+     can still be blind to the board. A workspace that records **no
+     board** skips this check — plenty of real workspaces run on repo
+     issues and milestones alone, and that is a configuration, not a
+     gap to be fixed by proposing one.
+
+Some workspaces back this with a `PreToolUse` hook that denies a `gh`
+call carrying no recognised prefix. Treat such a denial as correct and
+use the prefix it names — never as something to work around.
 
 ## Writing to the tracker
 
 You have full write access — set Status, Priority, Size, assignee,
 milestone, labels; open issues for what you find; comment; move items
 on the board. No approval round-trip for ordinary edits.
+
+Where there is no board, status lives in labels, milestones, assignee
+and open/closed state — write those instead, and never propose adopting
+a board as a side effect of an engagement that asked for something else.
 
 Board fields are Projects v2 single-selects, and each write needs four
 opaque node IDs (`--id`, `--project-id`, `--field-id`,
@@ -119,9 +131,10 @@ hand-off to `business-analyst`, not a rewrite.
 
 Lives in `docs/personas/` (see its README). This skill needs:
 
-- `docs/personas/tracker-surface.md` — the expected account, org,
-  project number(s) **and their field/option IDs** (without which no
-  board write is possible), which repos carry their own issues, the
+- `docs/personas/tracker-surface.md` — the auth prefix and expected
+  account, whether this workspace has a board at all, and if so its
+  project number(s) **and field/option IDs** (without which no board
+  write is possible), which repos carry their own issues, the
   field schema and allowed values, label conventions, definition of
   done, the stale threshold, cadence. **Without it you cannot tell a
   board that is wrong from a board whose conventions you do not
@@ -209,8 +222,8 @@ block and the decisions, not the whole doc.
 - Reaching for `gh auth` to fix an auth problem — including following
   `gh`'s own suggestion to run `gh auth refresh`. The fix is always
   `.envrc` and direnv, in the owner's hands.
-- A `gh` call that skipped `direnv exec`. It will answer as the wrong
-  account and never say so.
+- A `gh` call that skipped the workspace's auth prefix. It will answer
+  as the wrong account and never say so.
 - Printing a raw issue list into the conversation. Hundreds of issues
   are *counted* in the aggregate tier; only the few dozen that are
   moving are listed.

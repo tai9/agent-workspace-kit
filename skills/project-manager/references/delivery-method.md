@@ -6,8 +6,10 @@ shapes. A shape with an empty slot is unfinished; a slot that cannot be
 filled is itself a finding ("this issue has no owner and no acceptance
 criteria" is a real and useful sentence).
 
-Every command below runs through `direnv exec "$WS" gh …` — see the
-auth section of SKILL.md. `$WS` is the workspace root. Issues are
+Every command below is written `$GH …`, meaning the authenticated
+invocation this workspace recorded in `docs/personas/tracker-surface.md`
+— `direnv exec <root> gh` by default, or a token named on the command.
+See the auth section of SKILL.md; never run a bare `gh`. Issues are
 identified as **`repo#n`**, never bare `#n`: in a multi-repo workspace a
 bare number names three different issues.
 
@@ -31,7 +33,7 @@ stated purpose:
 
 ```sh
 mkdir -p .pm-cache
-direnv exec "$WS" gh issue list -R <owner/repo> --state open -L 1000 \
+$GH issue list -R <owner/repo> --state open -L 1000 \
   --json number,title,labels,assignees,updatedAt,milestone,blockedBy,blocking,parent,closedByPullRequestsReferences \
   > .pm-cache/<date>-<repo>.json
 ```
@@ -61,12 +63,19 @@ Job 3 draws from triaged items, never from the whole backlog.
 and blocked. A weekly readout over a 500-item board is a few dozen
 changed items, not 500.
 
-**5. The board is the working set; repo issues are the drift check.**
-`gh project item-list` returns what is on the board — usually far
-smaller than the repo's open issues. Start there. Sweeping repo issues
-serves exactly one purpose: finding open issues that are *not* on the
-board. Answer that as a count first (`N open issues off the board`);
-list them only if N is small or the owner asks.
+**5. The working set, not the whole repo.** Where a board exists it
+*is* the working set: `gh project item-list` returns far less than the
+repo's open issues, so start there, and sweep repo issues for exactly
+one purpose — finding open issues that are *not* on the board, answered
+as a count first (`N open issues off the board`), listed only if N is
+small or the owner asks.
+
+**Where there is no board** — a common and legitimate setup — the
+working set is assembled instead: open issues narrowed by the
+milestone, label or assignee that `tracker-surface.md` records as
+meaning "active". Everything else in this file still applies; only the
+source of the working set changes. Do not treat a missing board as a
+finding, and do not propose adopting one unless asked.
 
 **6. Verify you got the whole page.** If the number of records returned
 equals `--limit`, the page was truncated: raise the limit and rerun.
@@ -149,18 +158,20 @@ did not sequence anything — say so explicitly, or look again.
 1. Preflight the account and the project scope (SKILL.md). Read
    `docs/personas/tracker-surface.md` for which board and which repos
    are authoritative, and for the stale threshold.
-2. **The board first** (rule 5):
+2. **The working set first** (rule 5). With a board:
    ```sh
-   direnv exec "$WS" gh project item-list <n> --owner <org> -L 500 --format json \
+   $GH project item-list <n> --owner <org> -L 500 --format json \
      > .pm-cache/<date>-board.json
    ```
-   Then the repos' open issues into per-repo files (rule 2). Across
-   many repos, one call covers them all:
+   Without a board, go straight to the repos' open issues and mark the
+   active slice by the milestone/label/assignee convention recorded in
+   `tracker-surface.md`. Either way the issues land in per-repo files
+   (rule 2). Across many repos, one call covers them all:
    `gh search issues --owner <org> --state open -L 1000 --json repository,number,title,labels,assignees,updatedAt`.
 3. **Cross-check against the repos, always** — the board is the claim,
    the repo is the evidence. Per repo, by merge date:
    ```sh
-   direnv exec "$WS" gh pr list -R <owner/repo> --state merged -L 200 \
+   $GH pr list -R <owner/repo> --state merged -L 200 \
      --search "merged:>=<date>" --json number,title,mergedAt,closingIssuesReferences
    ```
    Never run `gh pr list` without `-R` from the workspace root: it
@@ -210,10 +221,10 @@ owner).
 Outcome per issue is one of: **ready** (sized, prioritized, has enough
 to start), **needs AC** → hand to `business-analyst`, **needs a value
 call** → hand to `product-owner`, **needs repro** → hand to
-`qa-engineer`, **duplicate** → `gh issue close <n> -R <repo>
---duplicate-of <m>`, **wrong repo** → `gh issue transfer <n>
+`qa-engineer`, **duplicate** → `$GH issue close <n> -R <repo>
+--duplicate-of <m>`, **wrong repo** → `$GH issue transfer <n>
 <owner/dest-repo>`, **decompose** (XL) → the child items you propose
-(`gh issue edit <child> -R <repo> --parent <n>` links them).
+(`$GH issue edit <child> -R <repo> --parent <n>` links them).
 
 Then write the fields — board fields through `item-edit` with the IDs
 from `tracker-surface.md` (see job 5). Five or more items →
@@ -248,7 +259,7 @@ not tracked is the finding: open it.
 **Every edge you discover that GitHub does not know gets written back:**
 
 ```sh
-direnv exec "$WS" gh issue edit <n> -R <owner/repo> --add-blocked-by <m>
+$GH issue edit <n> -R <owner/repo> --add-blocked-by <m>
 ```
 
 That is what turns a one-off sweep into a wait graph the next readout
@@ -268,22 +279,22 @@ Board writes need four IDs, all recorded in `tracker-surface.md` during
 adoption (project ID, and the field/option ID table):
 
 ```sh
-direnv exec "$WS" gh project item-edit \
+$GH project item-edit \
   --id <item-id> --project-id <project-id> \
   --field-id <field-id> --single-select-option-id <option-id>
 ```
 
 One field per invocation. Item IDs come from the `id` key of
 `item-list` output. Adding an issue to the board is
-`gh project item-add <n> --owner <org> --url <issue-url>`.
+`$GH project item-add <n> --owner <org> --url <issue-url>`.
 
 | Drift | Fix |
 | --- | --- |
-| Merged, and the tracker's definition of done is "merged" | `gh issue close <n> -R <repo>` with the PR link |
+| Merged, and the tracker's definition of done is "merged" | `$GH issue close <n> -R <repo>` with the PR link |
 | Merged but done means "released" | Move Status to the board's shipped-pending state — **never Close**. `agent-workspace-kit release status` lists what is merged but unshipped |
 | Issue closed, work not actually done | Reopen, say what is missing |
-| In progress, no activity past the stale threshold | `gh issue comment <n> -R <repo> --body "@<assignee> …"` — ask first. Move it back to ready only on a later engagement, after the ping went unanswered |
-| Open issue not on the board | `gh project item-add`, or record why it is deliberately off |
+| In progress, no activity past the stale threshold | `$GH issue comment <n> -R <repo> --body "@<assignee> …"` — ask first. Move it back to ready only on a later engagement, after the ping went unanswered |
+| Open issue not on the board | `$GH project item-add`, or record why it is deliberately off — **skip this row entirely where the workspace has no board** |
 | Missing Status / Priority / Size | Fill from triage |
 | Assignee who is not working on it | Clear it — a false owner hides an unowned item |
 | Label vocabulary drifting from the conventions | Normalize to `tracker-surface.md` |
@@ -304,9 +315,9 @@ milestone" is one title repeated across repos, or an iteration field on
 the board (`tracker-surface.md` records which). Pull scope per repo:
 
 ```sh
-direnv exec "$WS" gh issue list -R <owner/repo> --milestone "<title>" --state all -L 500 \
+$GH issue list -R <owner/repo> --milestone "<title>" --state all -L 500 \
   --json number,title,state,closedAt,labels,assignees
-direnv exec "$WS" gh api repos/<owner/repo>/milestones --jq '.[]|{title,due_on,open_issues,closed_issues}'
+$GH api repos/<owner/repo>/milestones --jq '.[]|{title,due_on,open_issues,closed_issues}'
 ```
 
 Scope committed vs. landed vs. remaining **by size, not by count** —
