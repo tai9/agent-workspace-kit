@@ -27,6 +27,20 @@ printf '%s' "$out" | grep -q 'BE-contract consumer' && t_ok "coupling warning" |
 is "unpaired contract touch is maybe" "maybe" "$(unreleased_rows | tail -1 | awk -F'|' '{gsub(/ /,"",$8); print $8}')"
 is "status prints the rows" "3" "$(bash "$KIT/bin/release-status" | grep -c '^|')"
 
+# An empty queue printed nothing at all, which reads the same as a broken
+# command to anything consuming it — the project-manager skill reads this to
+# find merged-but-unshipped work. stdout stays machine-clean (no rows), and
+# the reason goes to stderr.
+echo "release-status: empty queue says so"
+make_multi "$TMP/empty"; (cd "$TMP/empty" && WORKSPACE_ROOT="$TMP/empty" bash "$KIT/bin/release-status" >/dev/null 2>/dev/null)
+out="$(cd "$TMP/empty" && WORKSPACE_ROOT="$TMP/empty" bash "$KIT/bin/release-status" 2>&1 | strip_ansi)"
+printf '%s' "$out" | grep -q 'nothing queued' && t_ok "empty queue says nothing queued" || t_bad "empty queue" "nothing queued" "$out"
+outonly="$(cd "$TMP/empty" && WORKSPACE_ROOT="$TMP/empty" bash "$KIT/bin/release-status" 2>/dev/null)"
+is "empty queue keeps stdout clean" "" "$outonly"
+rc=0; (cd "$TMP/empty" && WORKSPACE_ROOT="$TMP/empty" bash "$KIT/bin/release-status" >/dev/null 2>&1) || rc=$?
+is "empty queue still exits 0" "0" "$rc"
+export WORKSPACE_ROOT="$TMP/m"
+
 echo "release-add: --paired repo: prefix"
 c4=$(commit_file "$R" lib/features/y.dart "feat(y): another")
 bash "$KIT/bin/release-add" "$c4" --paired "backend:$bc" >/dev/null

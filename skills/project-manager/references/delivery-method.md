@@ -43,6 +43,15 @@ unassigned, by label — with no second network call and no second
 context cost. `.pm-cache/` is gitignored; the snapshot is disposable,
 the readout in `docs/pm/` is not.
 
+**The relationship fields are objects, not arrays.** `blockedBy` and
+`blocking` come back as `{"nodes": [...], "totalCount": N}`, so
+`.blockedBy | length` is **2 for every issue** — the key count — and a
+count built that way reports the whole backlog as blocked. Use
+`.blockedBy.totalCount` and `.blockedBy.nodes[]`. `parent` is a single
+object or `null`; `closedByPullRequestsReferences`, `labels` and
+`assignees` really are arrays. When a count comes out suspiciously
+round — every issue, or none — check the shape before reporting it.
+
 **3. Two tiers, always in this order.**
 
 - **Aggregate tier** — always computed, always printed, ~15 lines:
@@ -179,6 +188,15 @@ did not sequence anything — say so explicitly, or look again.
    the wrong one, or fail. `closingIssuesReferences` gives
    done-but-not-closed directly; `closedByPullRequestsReferences` on
    the issue side gives the same fact from the other end.
+
+   **That detector is only as good as the repo's linking habit, so
+   measure the habit before trusting it**: of the merged PRs in the
+   window, how many reference an issue at all? Where the answer is
+   near zero, "what is done but still open" cannot be answered — the
+   data was never recorded. Say so in "Not visible to me", per repo,
+   with the number ("app: 0 of 44 merged PRs reference an issue —
+   done-but-open is unreadable there"), and never report an empty
+   done-not-closed section as if it meant the work was clean.
 4. Age everything. `updatedAt` is the cheap signal; for in-flight items
    the age that matters is since the last actual commit, PR, or
    comment.
