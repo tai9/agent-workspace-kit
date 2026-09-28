@@ -201,7 +201,7 @@ function planSymlink(relPath, target) {
 
 function planAppendGitignore(dirAbs) {
   const abs = path.join(dirAbs, '.gitignore');
-  const wantLines = ['.claude/worktrees/', '.claude/settings.local.json'];
+  const wantLines = ['.claude/worktrees/', '.claude/settings.local.json', '.envrc', '.pm-cache/'];
   const relPath = relRoot(abs);
   let current = exists(abs) ? fs.readFileSync(abs, 'utf8') : '';
   const currentLines = new Set(current.split('\n').map((l) => l.trim()).filter(Boolean));

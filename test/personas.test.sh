@@ -5,7 +5,7 @@
 # stay in agreement. Static — nothing is executed.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-PERSONAS="product-analyst business-analyst market-researcher product-owner conversion-audit qa-engineer designer"
+PERSONAS="product-analyst business-analyst market-researcher product-owner conversion-audit qa-engineer designer project-manager"
 
 for pskill in $PERSONAS; do
   f="$KIT/skills/$pskill/SKILL.md"

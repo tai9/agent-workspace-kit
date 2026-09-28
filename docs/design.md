@@ -197,7 +197,7 @@ another stack has a working starting point.
   a session is opened in.
 - **Persona skills** — `product-analyst`, `business-analyst`,
   `market-researcher`, `product-owner`, `conversion-audit`,
-  `qa-engineer`, `designer`. Method-only:
+  `qa-engineer`, `designer`, `project-manager`. Method-only:
   each reads its workspace-specific knowledge from `docs/personas/` (stubs
   scaffolded by `init` from `templates/personas/`, each carrying an
   `ADOPT-ME` marker). A skill that finds its file missing or still marked
@@ -205,7 +205,10 @@ another stack has a working starting point.
   the file — then does the asked job. They never edit product code, and
   they hand off to each other by name: analyst measures, owner decides,
   audit diagnoses money, BA writes requirements, researcher looks
-  outward, QA verifies builds against AC and reports risk.
+  outward, QA verifies builds against AC and reports risk, PM tracks
+  state and sequences what is already agreed (reading the org board and
+  per-repo issues through `gh`, authenticated from the workspace's own
+  `.envrc`, never from `gh auth`).
   `skill-coach` maintains the layer: observed failure → classify (stale
   knowledge / wrong method / unfollowed rule / not the skill) → smallest
   fix at the right layer (knowledge directly; method with approval;

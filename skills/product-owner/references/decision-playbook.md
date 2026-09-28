@@ -39,7 +39,13 @@ observable now (behavioural counts, funnel steps with dozens of users),
 and say when an effect cannot be measured yet — "unmeasurable at our
 scale" is an argument against building now.
 
-## Prioritization — sequencing the backlog
+## Prioritization — ranking the bets
+
+This section ranks **bets**: which candidates deserve investment, in
+what order of value. Ordering work already agreed to — dependencies,
+unblock value, cross-repo lead time, who picks up which ticket next —
+is `project-manager`'s, and its ordering rules live in that skill's
+`delivery-method.md`. Rank bets here; hand execution order over there.
 
 Two refusal conditions before any scoring: **frameworks execute
 strategy, they don't create it** — if the strategy doc can't say what

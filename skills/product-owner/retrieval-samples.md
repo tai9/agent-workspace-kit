@@ -13,8 +13,12 @@ skill's scope legitimately moved, update these samples in the same edit.
 - "what should we build next quarter?"
 - "keep, iterate, or kill feature Y?"
 - "what's the smallest version of X worth shipping?"
+- "what's the priority — which of these bets do we fund next?"
 
 ## Must NOT route here
 - "write the requirements for X" → business-analyst
 - "what's the actual number for Y?" → product-analyst
 - "does the build match the spec?" → qa-engineer
+- "what's the status of the board right now?" → project-manager
+- "which issues are blocked and why?" → project-manager
+- "what should I pick up next?" → project-manager
