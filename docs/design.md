@@ -116,6 +116,10 @@ release:
     - lib/core/services/app_version_service
   unreleased_prose_limit: 60    # doctor: max prose lines around UNRELEASED.md's tables
 
+hooks:                           # optional; only for a workspace that owns its guards
+  stub: scripts/hooks/workspace-guards.stub.sh   # the canonical copy repos must match
+  entry: guard-release-cut.sh                    # what .claude/settings.json must wire
+
 contracts:                       # optional; cross-repo pairs contract-check reports on
   - name: referral
     paths:
@@ -194,7 +198,15 @@ another stack has a working starting point.
   product repo carries in `.claude/hooks/`, walking up from its git top-level
   (stripping `/.claude/worktrees/*`) to the workspace's hooks and printing the
   first decision. Needed because Claude Code loads hooks only from the directory
-  a session is opened in.
+  a session is opened in. A workspace that runs its own guard
+  implementation instead of the kit's — the kit was extracted from one that
+  still does, and whose guards cover a command the kit's do not — names its
+  own canonical stub and entry point under `hooks:` in `workspace.yml`; the
+  doctor then checks those rather than the kit's files. The invariant is
+  unchanged (a canonical stub exists, every guarded repo carries it byte for
+  byte, the entry point is registered); only which files play those parts
+  moves. A declared stub that does not exist fails, so the key cannot be used
+  to switch the check off.
 - **Persona skills** — `product-analyst`, `business-analyst`,
   `market-researcher`, `product-owner`, `conversion-audit`,
   `qa-engineer`, `designer`, `project-manager`. Method-only:
