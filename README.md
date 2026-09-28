@@ -43,7 +43,7 @@ As a Claude Code plugin, once the marketplace listing is public:
 ```
 
 That installs the workflow skills (`release`, `app-live`,
-`workspace-doctor`), the `contract-reviewer` agent template, and the five
+`workspace-doctor`), the `contract-reviewer` agent template, and the eight
 **persona skills** (below); the workflow skills call the same CLI under the
 hood, so plugin and CLI never drift apart.
 
@@ -71,22 +71,33 @@ report only.
 
 ## Persona skills
 
-Seven product-role skills ship with the kit: `product-analyst` (measurement),
+Eight product-role skills ship with the kit: `product-analyst` (measurement),
 `business-analyst` (requirements), `market-researcher` (competitors and
 benchmarks), `product-owner` (build/priority verdicts), `conversion-audit`
 (why-users-don't-pay diagnosis), `qa-engineer` (verification and risk
-information), `designer` (design specs, UX review, and visual QA). Each carries only the *method* — jobs,
+information), `designer` (design specs, UX review, and visual QA),
+`project-manager` (status, blockers, complexity, solve order). Each carries only the *method* — jobs,
 disciplines, output shapes. What it knows about *your* product lives in
 `docs/personas/` at the workspace root, which `init` scaffolds as stubs
 (`templates/personas/`). A skill that finds its file still carrying the
 `ADOPT-ME` marker runs **adoption** first: it explores the workspace,
 interviews the owner, and fills the file — so the personas implement
-themselves for each consuming repo, incrementally, on first use. The seven
+themselves for each consuming repo, incrementally, on first use. The eight
 hand off to each other by name (analyst measures, owner decides, audit
 diagnoses, BA specifies, researcher looks outward, QA verifies, designer
-specifies the surface) and none of them edits product code.
+specifies the surface, PM sequences the work) and none of them edits
+product code.
 
-An eighth skill, `skill-coach`, maintains the layer itself: when a skill
+`project-manager` is the execution half of the pair `product-owner`
+completes: the owner rules on whether work is worth doing, the PM tracks
+what is actually true of the work already agreed to — status across an
+org project board and per-repo issues, what is blocked and on whom, how
+complex each item really is, and what order avoids deadlock. It reads
+GitHub through `gh`, with the account selected per workspace by `.envrc`
+(direnv) exporting `GH_TOKEN` — it never touches `gh auth` — and it
+writes to the tracker but never to product code or release tooling.
+
+A ninth skill, `skill-coach`, maintains the layer itself: when a skill
 gets something wrong, it classifies the failure (stale knowledge / wrong
 method / rule not followed / not the skill's fault), applies the smallest
 fix at the right layer — knowledge edits land directly in

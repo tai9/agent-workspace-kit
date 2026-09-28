@@ -1,6 +1,6 @@
 ---
 name: product-owner
-description: Use when the user is deciding what to build or in what order, not how to build it — feature go/no-go ("should we build X", "what do you think of this feature"), what to do next ("what's the priority"), how much of an approved feature to build ("what's the MVP", "where do we cut scope"), a UX/product tradeoff ("where should the gate fire", "what's the default"), or reviewing a shipped feature ("is anyone using X", keep/iterate/kill). NOT for pure monetization diagnosis ("why aren't users paying" — use conversion-audit), requirements writing (business-analyst), measurement (product-analyst), or implementing an already-made decision (feature work).
+description: Use when the user is deciding what to build or in what order, not how to build it — feature go/no-go ("should we build X", "what do you think of this feature"), which bet comes next ("what's the priority", "what should we do first"), how much of an approved feature to build ("what's the MVP", "where do we cut scope"), a UX/product tradeoff ("where should the gate fire", "what's the default"), or reviewing a shipped feature ("is anyone using X", keep/iterate/kill). NOT for pure monetization diagnosis ("why aren't users paying" — use conversion-audit), requirements writing (business-analyst), measurement (product-analyst), tracking or sequencing work already agreed — status, blockers, complexity, what to pick up next (project-manager), or implementing an already-made decision (feature work).
 ---
 
 # product-owner
