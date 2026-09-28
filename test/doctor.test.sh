@@ -304,4 +304,51 @@ out="$(run)"
 printf '%s' "$out" | grep -q 'warn releases/UNRELEASED.md — not created yet' \
   && t_ok "a workspace that has not shipped yet only warns" || t_bad "absent inventory" "warn" "$out"
 
+# ── workspace-owned guards ───────────────────────────────────────────────────
+# A workspace may run its own guard implementation instead of the kit's — the
+# kit was extracted from one that still does. The invariant the doctor cares
+# about is "a canonical stub exists, every guarded repo carries it byte for
+# byte, and the entry point is registered", not "the files are the kit's".
+# hooks.stub and hooks.entry in workspace.yml name the workspace's own, and
+# without them nothing changes.
+make_multi "$TMP/owned"; export WORKSPACE_ROOT="$TMP/owned"
+mkdir -p "$TMP/owned/scripts/hooks"
+printf '#!/bin/sh\n# the workspace owns this one\n' > "$TMP/owned/scripts/hooks/workspace-guards.stub.sh"
+printf '{"hooks":{"PreToolUse":[{"hooks":[{"command":"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-release-cut.sh"}]}]}}' > "$TMP/owned/.claude/settings.json" 2>/dev/null \
+  || { mkdir -p "$TMP/owned/.claude"; printf '{"hooks":{"PreToolUse":[{"hooks":[{"command":"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-release-cut.sh"}]}]}}' > "$TMP/owned/.claude/settings.json"; }
+for r in my-app my-be; do
+  mkdir -p "$TMP/owned/$r/.claude/hooks"
+  cp "$TMP/owned/scripts/hooks/workspace-guards.stub.sh" "$TMP/owned/$r/.claude/hooks/workspace-guards.sh"
+  printf '{"x":"workspace-guards.sh"}' > "$TMP/owned/$r/.claude/settings.json"
+done
+
+# Undeclared, the kit's own files are still the standard: these copies fail.
+out="$(bash "$KIT/bin/doctor" 2>&1 | strip_ansi)"
+printf '%s' "$out" | grep -q 'FAIL my-app — workspace-guards.sh differs from' \
+  && t_ok "undeclared: a foreign stub still fails" || t_bad "undeclared stub" "FAIL differs" "$out"
+printf '%s' "$out" | grep -q 'FAIL release guard not wired' \
+  && t_ok "undeclared: a foreign entry point still fails" || t_bad "undeclared entry" "FAIL not wired" "$out"
+
+# Declared, the workspace's own files are the standard.
+printf 'hooks:\n  stub: scripts/hooks/workspace-guards.stub.sh\n  entry: guard-release-cut.sh\n' >> "$TMP/owned/workspace.yml"
+out="$(bash "$KIT/bin/doctor" 2>&1 | strip_ansi)"
+printf '%s' "$out" | grep -q 'ok   release guard wired in .claude/settings.json (workspace-owned: guard-release-cut.sh)' \
+  && t_ok "declared entry point passes" || t_bad "declared entry" "ok release guard wired (workspace-owned…)" "$out"
+printf '%s' "$out" | grep -q 'ok   my-app — workspace guards stub in place and registered (workspace-owned)' \
+  && t_ok "declared stub passes" || t_bad "declared stub" "ok … (workspace-owned)" "$out"
+
+# Declared, but a copy drifted from the workspace's OWN stub: still a fail.
+echo drift >> "$TMP/owned/my-be/.claude/hooks/workspace-guards.sh"
+out="$(bash "$KIT/bin/doctor" 2>&1 | strip_ansi)"
+printf '%s' "$out" | grep -q 'FAIL my-be — workspace-guards.sh differs from scripts/hooks/workspace-guards.stub.sh' \
+  && t_ok "declared: drift from the owned stub still fails" || t_bad "owned drift" "FAIL differs from scripts/…" "$out"
+
+# A declared stub that does not exist is itself the failure — otherwise the
+# declaration becomes a way to switch the check off.
+printf 'hooks:\n  stub: scripts/hooks/nope.sh\n' > "$TMP/owned/workspace.yml.bad"
+sed -i.bak 's|stub: scripts/hooks/workspace-guards.stub.sh|stub: scripts/hooks/nope.sh|' "$TMP/owned/workspace.yml"
+out="$(bash "$KIT/bin/doctor" 2>&1 | strip_ansi)"
+printf '%s' "$out" | grep -q 'FAIL hooks.stub names scripts/hooks/nope.sh, which does not exist' \
+  && t_ok "a declared stub that is missing fails" || t_bad "missing declared stub" "FAIL hooks.stub names…" "$out"
+
 finish

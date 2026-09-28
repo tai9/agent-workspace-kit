@@ -100,14 +100,35 @@ doctor_hooks() {
     dr_warn "post-merge not installed — run bin/install-git-hooks"
   fi
 
-  if grep -q "workspace-guards.sh" "$WORKSPACE_ROOT/.claude/settings.json" 2>/dev/null; then
-    dr_pass "release guard wired in .claude/settings.json"
+  # A workspace may run its own guard implementation rather than the kit's —
+  # this kit was extracted from one that still does, and its guards cover a
+  # command the kit's do not. What the doctor is actually checking is that a
+  # canonical stub exists, every guarded repo carries it byte for byte, and
+  # the entry point is registered; hooks.entry and hooks.stub in workspace.yml
+  # say which files play those parts. Undeclared, the kit's own remain the
+  # standard, so nothing changes for a workspace that never sets them.
+  local guard_entry owned_entry
+  guard_entry="$(cfg_default hooks.entry "")"
+  if [ -n "$guard_entry" ]; then owned_entry=" (workspace-owned: $guard_entry)"
+  else guard_entry="workspace-guards.sh"; owned_entry=""; fi
+
+  if grep -q "$guard_entry" "$WORKSPACE_ROOT/.claude/settings.json" 2>/dev/null; then
+    dr_pass "release guard wired in .claude/settings.json$owned_entry"
   else
     dr_fail "release guard not wired; a cut can run with no confirmation"
   fi
 
   if [ "$(shape)" != monorepo ]; then
-    local stub="$KIT_ROOT/hooks/workspace-guards.stub.sh"
+    local stub stub_label owned_stub declared
+    declared="$(cfg_default hooks.stub "")"
+    if [ -n "$declared" ]; then
+      stub="$WORKSPACE_ROOT/$declared"; stub_label="$declared"; owned_stub=" (workspace-owned)"
+      # A declared stub that does not exist would silently turn the whole
+      # check off, so it is the failure itself.
+      [ -f "$stub" ] || dr_fail "hooks.stub names $declared, which does not exist; point it at this workspace's canonical guard stub or drop the key"
+    else
+      stub="$KIT_ROOT/hooks/workspace-guards.stub.sh"; stub_label="hooks/workspace-guards.stub.sh"; owned_stub=""
+    fi
     local n repo dir copy wt
     for n in $(repo_names); do
       [ "$(repo_guards "$n")" = true ] || continue
@@ -116,11 +137,11 @@ doctor_hooks() {
       if [ ! -f "$copy" ]; then
         dr_fail "$repo — no .claude/hooks/workspace-guards.sh; release and PR guards are off in sessions opened there"
       elif ! cmp -s "$stub" "$copy"; then
-        dr_fail "$repo — workspace-guards.sh differs from hooks/workspace-guards.stub.sh"
+        dr_fail "$repo — workspace-guards.sh differs from $stub_label"
       elif ! grep -q "workspace-guards.sh" "$dir/.claude/settings.json" 2>/dev/null; then
         dr_fail "$repo — workspace-guards.sh present but not registered in .claude/settings.json"
       else
-        dr_pass "$repo — workspace guards stub in place and registered"
+        dr_pass "$repo — workspace guards stub in place and registered$owned_stub"
       fi
       # A worktree branched before the hooks landed runs with none of them
       # until it is rebased; say so rather than let it look protected.
