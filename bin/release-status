@@ -4,9 +4,19 @@
 # Deliberately thin — rendering this into something human-readable is a later
 # skill's job, not this command's.
 #
+# An empty queue prints no rows, which on its own is indistinguishable from a
+# command that failed silently — and a caller reading this to find unshipped
+# work (the project-manager skill does) cannot tell the two apart. So the
+# reason goes to stderr while stdout stays row-only and machine-clean.
+#
 # Usage: release-status
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/release-common.sh"
 
 ensure_unreleased
-unreleased_rows
+rows="$(unreleased_rows)"
+if printf '%s' "$rows" | grep -q '^|'; then
+  printf '%s\n' "$rows"
+else
+  warn "nothing queued — no unshipped items recorded in $(basename "$(dirname "$UNRELEASED_FILE")")/$(basename "$UNRELEASED_FILE")"
+fi

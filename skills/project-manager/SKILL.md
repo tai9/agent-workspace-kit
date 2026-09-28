@@ -230,5 +230,11 @@ block and the decisions, not the whole doc.
 - A report built on a page whose record count equalled the `--limit`.
   That page was truncated; the readout is wrong and confidently so.
 - Sweeping closed issues. They answer no question about the present.
+- An empty "done, not closed" section reported as good news without
+  first checking that the repo links PRs to issues at all. A detector
+  with no input reports nothing, which looks exactly like nothing to
+  report.
+- A count that comes out at every issue or at none. Check the field's
+  shape before believing it — the relationship fields are objects.
 - Closing merged-but-unreleased items in a workspace where done means
   released.
