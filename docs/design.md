@@ -209,7 +209,8 @@ another stack has a working starting point.
   to switch the check off.
 - **Persona skills** — `product-analyst`, `business-analyst`,
   `market-researcher`, `product-owner`, `conversion-audit`,
-  `qa-engineer`, `designer`, `project-manager`. Method-only:
+  `qa-engineer`, `designer`, `project-manager`, `app-store-reviewer`.
+  Method-only:
   each reads its workspace-specific knowledge from `docs/personas/` (stubs
   scaffolded by `init` from `templates/personas/`, each carrying an
   `ADOPT-ME` marker). A skill that finds its file missing or still marked
@@ -218,7 +219,8 @@ another stack has a working starting point.
   they hand off to each other by name: analyst measures, owner decides,
   audit diagnoses money, BA writes requirements, researcher looks
   outward, QA verifies builds against AC and reports risk, PM tracks
-  state and sequences what is already agreed (reading the org board and
+  state and sequences what is already agreed, the store reviewer reads
+  the build as App Review will and says what gets it rejected (reading the org board and
   per-repo issues through `gh`, authenticated from the workspace's own
   `.envrc`, never from `gh auth`).
   `skill-coach` maintains the layer: observed failure → classify (stale

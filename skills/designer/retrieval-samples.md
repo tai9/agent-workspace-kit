@@ -18,6 +18,7 @@ skill's scope legitimately moved, update these samples in the same edit.
 - "make the App Store screenshot set"
 
 ## Must NOT route here
+- "will this paywall pass App Store review?" → app-store-reviewer
 - "what features and pricing do our competitors have?" → market-researcher
 - "test the feature that was just built" → qa-engineer
 - "should we build this screen at all?" → product-owner
