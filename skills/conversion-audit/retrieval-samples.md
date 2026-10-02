@@ -15,5 +15,6 @@ skill's scope legitimately moved, update these samples in the same edit.
 - "where does the money chain leak?"
 
 ## Must NOT route here
+- "audit the app for App Store rejection risks" → app-store-reviewer
 - "what's revenue this month? just the number" → product-analyst
 - "how do competitors price?" → market-researcher
