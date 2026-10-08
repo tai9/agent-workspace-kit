@@ -38,6 +38,27 @@ out="$(run)"
 printf '%s' "$out" | grep -q 'FAIL my-app — CLAUDE.md and AGENTS.md are both real files; they will drift apart' \
   && t_ok "both rules files real fails" || t_bad "both real" "FAIL my-app — CLAUDE.md and AGENTS.md are both real files; they will drift apart" "$out"
 
+# CLAUDE.md is a real file that imports AGENTS.md (the AI OS layout): one rules file
+make_multi "$TMP/f-import"; export WORKSPACE_ROOT="$TMP/f-import"
+printf '<!-- ai-os:begin claude -->\n@AGENTS.md\n<!-- ai-os:end claude -->\n' > "$TMP/f-import/my-app/CLAUDE.md"
+printf '# rules\nline\n' > "$TMP/f-import/my-app/AGENTS.md"
+out="$(run)"
+printf '%s' "$out" | grep -q 'both real files' && t_bad "import layout is not 'both real'" "no such FAIL" "$out" || t_ok "import layout is not 'both real'"
+printf '%s' "$out" | grep -q 'ok   my-app — one rules file, 2 lines, CLAUDE.md imports AGENTS.md' \
+  && t_ok "import layout ok" || t_bad "import ok" "ok   my-app — one rules file, 2 lines, CLAUDE.md imports AGENTS.md" "$out"
+# the size budget applies to AGENTS.md, the file holding the rules
+for i in $(seq 1 405); do echo "l$i"; done > "$TMP/f-import/my-app/AGENTS.md"
+out="$(run)"
+printf '%s' "$out" | grep -q 'warn my-app — rules file is 405 lines; past 400 it is carrying reference material' \
+  && t_ok "import layout budget on AGENTS.md" || t_bad "import budget" "warn … 405 lines" "$out"
+# a mention of @AGENTS.md inside prose is not an import
+make_multi "$TMP/f-mention"; export WORKSPACE_ROOT="$TMP/f-mention"
+printf '# a\nSee @AGENTS.md for more.\n' > "$TMP/f-mention/my-app/CLAUDE.md"
+printf '# b\n' > "$TMP/f-mention/my-app/AGENTS.md"
+out="$(run)"
+printf '%s' "$out" | grep -q 'FAIL my-app — CLAUDE.md and AGENTS.md are both real files' \
+  && t_ok "prose mention still fails" || t_bad "prose mention" "FAIL both real" "$out"
+
 # test files, no CI workflow
 make_multi "$TMP/f-ci"; export WORKSPACE_ROOT="$TMP/f-ci"
 mkdir -p "$TMP/f-ci/my-be/test"; printf 'x' > "$TMP/f-ci/my-be/test/foo_test.dart"

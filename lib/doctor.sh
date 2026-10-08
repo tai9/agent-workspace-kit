@@ -47,16 +47,22 @@ doctor_rules() {
     c="$dir/CLAUDE.md"; a="$dir/AGENTS.md"
     if [ ! -e "$c" ] && [ ! -e "$a" ]; then dr_fail "$repo — no CLAUDE.md and no AGENTS.md"; continue; fi
     if [ ! -e "$a" ]; then dr_fail "$repo — AGENTS.md missing; a reader looking for it gets no rules"; continue; fi
+    # A real CLAUDE.md whose own line is exactly `@AGENTS.md` imports it (the AI OS layout): one rules file.
+    local how="the other symlinked"
     if [ ! -L "$c" ] && [ ! -L "$a" ]; then
-      dr_fail "$repo — CLAUDE.md and AGENTS.md are both real files; they will drift apart"
-    else
-      real="$c"; [ -L "$c" ] && real="$a"
-      lines=$(wc -l < "$real" | tr -d ' ')
-      if [ "$lines" -gt 400 ]; then
-        dr_warn "$repo — rules file is $lines lines; past 400 it is carrying reference material"
+      if [ -f "$c" ] && grep -qxE '[[:space:]]*@AGENTS\.md[[:space:]]*' "$c"; then
+        how="CLAUDE.md imports AGENTS.md"
       else
-        dr_pass "$repo — one rules file, $lines lines, the other symlinked"
+        dr_fail "$repo — CLAUDE.md and AGENTS.md are both real files; they will drift apart"
+        continue
       fi
+    fi
+    real="$c"; { [ -L "$c" ] || [ "$how" != "the other symlinked" ]; } && real="$a"
+    lines=$(wc -l < "$real" | tr -d ' ')
+    if [ "$lines" -gt 400 ]; then
+      dr_warn "$repo — rules file is $lines lines; past 400 it is carrying reference material"
+    else
+      dr_pass "$repo — one rules file, $lines lines, $how"
     fi
   done < <(doctor_targets)
 }
